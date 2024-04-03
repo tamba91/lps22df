@@ -1,14 +1,20 @@
 use embedded_hal::i2c::{I2c, SevenBitAddress};
-use embedded_hal::spi::SpiDevice;
+//use embedded_hal::spi::SpiDevice;
 
-pub struct  Lps22dfI2C<P> {
-    pub(crate) i2c: P,
-    pub(crate) address: SevenBitAddress,
+pub(crate) struct  Lps22dfI2C<P> {
+    i2c: P,
+    address: SevenBitAddress,
 }
 
-pub struct  Lps22dfSPI<P> {
-    pub(crate) spi: P,
+impl<P:I2c> Lps22dfI2C<P> {
+    pub(crate) fn new(i2c: P, address: SevenBitAddress) -> Self {
+        Self {i2c, address}
+    }
 }
+
+// pub struct  Lps22dfSPI<P> {
+//     pub(crate) spi: P,
+// }
 
 pub trait BusOperation {
     type Error;
@@ -37,21 +43,21 @@ impl<P: I2c> BusOperation for Lps22dfI2C<P> {
     }
 }
 
-impl<P: SpiDevice> BusOperation for Lps22dfSPI<P> {
-    type Error = P::Error;
+// impl<P: SpiDevice> BusOperation for Lps22dfSPI<P> {
+//     type Error = P::Error;
 
-    #[inline]
-    fn write_read_bytes(
-        &mut self,
-        wbuf: &[u8],
-        rbuf: &mut [u8],
-    ) -> Result<(), Lps22dfError<Self::Error>> {
-        self.spi.write(wbuf).map_err(Lps22dfError::SPI)?;
-        self.spi.read(rbuf).map_err(Lps22dfError::SPI)?;
+//     #[inline]
+//     fn write_read_bytes(
+//         &mut self,
+//         wbuf: &[u8],
+//         rbuf: &mut [u8],
+//     ) -> Result<(), Lps22dfError<Self::Error>> {
+//         self.spi.write(wbuf).map_err(Lps22dfError::SPI)?;
+//         self.spi.read(rbuf).map_err(Lps22dfError::SPI)?;
 
-        Ok(())
-    }
-}
+//         Ok(())
+//     }
+// }
 
 #[derive(Copy, Clone, Debug)]
 pub enum Lps22dfError<P> {
@@ -66,7 +72,7 @@ pub enum Lps22dfError<P> {
 #[repr(u8)]
 pub enum Reg {
     WhoAmI = 0xF,
-    CtrlReg1 = 0x10,
-    Status = 0x27,
-    TempOutL = 0x2B,
+    // CtrlReg1 = 0x10,
+    // Status = 0x27,
+    // TempOutL = 0x2B,
 }

@@ -1,5 +1,5 @@
 use embedded_hal::i2c::{I2c, SevenBitAddress};
-use embedded_hal::spi::SpiDevice;
+//use embedded_hal::spi::SpiDevice;
 
 //use self::lps22df_internal::{CtrlReg1Avg, CtrlReg1Odr};
 
@@ -11,19 +11,18 @@ pub struct Lps22df<T> {
 
 impl<P: I2c> Lps22df<lps22df_internal::Lps22dfI2C<P>> {
     pub fn new_i2c(i2c: P, address: SevenBitAddress) -> Self {
-        Lps22df {
-            bus: lps22df_internal::Lps22dfI2C { i2c, address },
-        }
+        let bus = lps22df_internal::Lps22dfI2C::new(i2c, address);
+        Self{bus}
     }
 }
 
-impl<P: SpiDevice> Lps22df<lps22df_internal::Lps22dfSPI<P>> {
-    pub fn new_spi(spi: P) -> Self {
-        Lps22df {
-            bus: lps22df_internal::Lps22dfSPI { spi },
-        }
-    }
-}
+// impl<P: SpiDevice> Lps22df<lps22df_internal::Lps22dfSPI<P>> {
+//     pub fn new_spi(spi: P) -> Self {
+//         Lps22df {
+//             bus: lps22df_internal::Lps22dfSPI { spi },
+//         }
+//     }
+// }
 
 impl<T: lps22df_internal::BusOperation> Lps22df<T> {
     fn read_from_register(
