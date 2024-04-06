@@ -10,7 +10,7 @@ pub struct Lps22dfI2C<P> {
 }
 
 impl<P: I2c> Lps22dfI2C<P> {
-    pub(in crate::api) fn new(i2c: P, address: SevenBitAddress) -> Self {
+    pub(super) fn new(i2c: P, address: SevenBitAddress) -> Self {
         Self { i2c, address }
     }
 }
@@ -20,13 +20,34 @@ pub struct Lps22dfSPI<P> {
 }
 
 impl<P: SpiDevice> Lps22dfSPI<P> {
-    pub(in crate::api) fn new(spi: P) -> Self {
+    pub(super) fn new(spi: P) -> Self {
         Self { spi }
     }
 }
 
-impl<P: I2c> super::BusOperation for Lps22dfI2C<P> {
+pub trait BusOperation {
+    type Error;
+
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Lps22dfError<Self::Error>>;
+    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Lps22dfError<Self::Error>>;
+    fn write_read_bytes(
+        &mut self,
+        wbuf: &[u8],
+        rbuf: &mut [u8],
+    ) -> Result<(), Lps22dfError<Self::Error>>;
+}
+
+impl<P: I2c> BusOperation for Lps22dfI2C<P> {
     type Error = P::Error;
+
+    #[inline]
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Lps22dfError<Self::Error>> {
+        self.i2c
+            .read(self.address, rbuf)
+            .map_err(Lps22dfError::I2C)?;
+
+        Ok(())
+    }
 
     #[inline]
     fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Lps22dfError<Self::Error>> {
@@ -51,8 +72,15 @@ impl<P: I2c> super::BusOperation for Lps22dfI2C<P> {
     }
 }
 
-impl<P: SpiDevice> super::BusOperation for Lps22dfSPI<P> {
+impl<P: SpiDevice> BusOperation for Lps22dfSPI<P> {
     type Error = P::Error;
+
+    #[inline]
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Lps22dfError<Self::Error>> {
+        self.spi.read(rbuf).map_err(Lps22dfError::SPI)?;
+
+        Ok(())
+    }
 
     #[inline]
     fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Lps22dfError<Self::Error>> {
@@ -74,8 +102,8 @@ impl<P: SpiDevice> super::BusOperation for Lps22dfSPI<P> {
     }
 }
 
-impl<T: super::BusOperation> super::Lps22df<T> {
-    pub(in crate::api) fn read_from_register(
+impl<T: BusOperation> super::Lps22df<T> {
+    fn read_from_register(
         &mut self,
         reg: Reg,
         buf: &mut [u8],
@@ -97,7 +125,34 @@ impl<T: super::BusOperation> super::Lps22df<T> {
         Ok(())
     }
 
-    pub(in crate::api) fn ctrl_reg1_set_odr(
+    #[inline]
+    fn write_to_register_no_check(
+        &mut self,
+        reg: Reg,
+        val: u8,
+    ) -> Result<(), Lps22dfError<T::Error>> {
+        self.bus.write_bytes(&[reg as u8, val])?;
+
+        Ok(())
+    }
+
+    pub(super) fn who_am_i_get(&mut self) -> Result<u8, Lps22dfError<T::Error>> {
+        let mut arr: [u8; 1] = [0];
+        self.read_from_register(Reg::WhoAmI, &mut arr)?;
+
+        Ok(arr[0])
+    }
+
+    pub(super) fn ctrl_reg1_get_odr(&mut self) -> Result<CtrlReg1Odr, Lps22dfError<T::Error>> {
+        let mut arr: [u8; 1] = [0];
+        self.read_from_register(Reg::CtrlReg1, &mut arr)?;
+        let val = (CtrlReg1(arr[0]).ctrl_reg1_odr()) as u32;
+        let odr: CtrlReg1Odr = val.into();
+
+        Ok(odr)
+    }
+
+    pub(super) fn ctrl_reg1_set_odr(
         &mut self,
         odr: CtrlReg1Odr,
     ) -> Result<(), Lps22dfError<T::Error>> {
@@ -110,7 +165,7 @@ impl<T: super::BusOperation> super::Lps22df<T> {
         Ok(())
     }
 
-    pub(in crate::api) fn ctrl_reg1_set_avg(
+    pub(super) fn ctrl_reg1_set_avg(
         &mut self,
         avg: CtrlReg1Avg,
     ) -> Result<(), Lps22dfError<T::Error>> {
@@ -122,8 +177,48 @@ impl<T: super::BusOperation> super::Lps22df<T> {
 
         Ok(())
     }
+    pub(super) fn ctrl_reg2_get_oneshot(&mut self) -> Result<bool, Lps22dfError<T::Error>> {
+        let mut arr: [u8; 1] = [0];
+        self.read_from_register(Reg::CtrlReg2, &mut arr)?;
+        let val = CtrlReg2(arr[0]).ctrl_reg2_oneshot();
 
-    pub(in crate::api) fn status_get_t_da(&mut self) -> Result<bool, Lps22dfError<T::Error>> {
+        Ok(val != 0)
+    }
+
+    pub(super) fn ctrl_reg2_set_oneshot(&mut self) -> Result<(), Lps22dfError<T::Error>> {
+        let mut arr: [u8; 1] = [0];
+        self.read_from_register(Reg::CtrlReg2, &mut arr)?;
+        let mut val = CtrlReg2(arr[0]);
+        val.set_ctrl_reg2_oneshot(true as u8);
+        self.write_to_register_no_check(Reg::CtrlReg2, val.ctrl_reg2())?;
+
+        Ok(())
+    }
+
+    pub(super) fn ctrl_reg4_set_drdy_pulsed(
+        &mut self,
+        drdy_pulsed: bool,
+    ) -> Result<(), Lps22dfError<T::Error>> {
+        let mut arr: [u8; 1] = [0];
+        self.read_from_register(Reg::CtrlReg4, &mut arr)?;
+        let mut val = CtrlReg4(arr[0]);
+        val.set_ctrl_reg4_drdy_pls(drdy_pulsed as u8);
+        self.write_to_register(Reg::CtrlReg4, val.ctrl_reg4())?;
+
+        Ok(())
+    }
+
+    pub(super) fn ctrl_reg4_set_drdy(&mut self, drdy: bool) -> Result<(), Lps22dfError<T::Error>> {
+        let mut arr: [u8; 1] = [0];
+        self.read_from_register(Reg::CtrlReg4, &mut arr)?;
+        let mut val = CtrlReg4(arr[0]);
+        val.set_ctrl_reg4_drdy(drdy as u8);
+        self.write_to_register(Reg::CtrlReg4, val.ctrl_reg4())?;
+
+        Ok(())
+    }
+
+    pub(super) fn status_get_t_da(&mut self) -> Result<bool, Lps22dfError<T::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status, &mut arr)?;
         let val = Status(arr[0]);
@@ -131,7 +226,7 @@ impl<T: super::BusOperation> super::Lps22df<T> {
         Ok(val.status_t_da() != 0)
     }
 
-    pub(in crate::api) fn status_get_p_da(&mut self) -> Result<bool, Lps22dfError<T::Error>> {
+    pub(super) fn status_get_p_da(&mut self) -> Result<bool, Lps22dfError<T::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status, &mut arr)?;
         let val = Status(arr[0]);
@@ -139,7 +234,7 @@ impl<T: super::BusOperation> super::Lps22df<T> {
         Ok(val.status_p_da() != 0)
     }
 
-    pub(in crate::api) fn temp_out_get_l_h(&mut self) -> Result<i32, Lps22dfError<T::Error>> {
+    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i32, Lps22dfError<T::Error>> {
         let mut arr: [u8; 2] = [0; 2];
         self.read_from_register(Reg::TempOutL, &mut arr)?;
         let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8;
@@ -147,10 +242,18 @@ impl<T: super::BusOperation> super::Lps22df<T> {
         Ok(val)
     }
 
-    pub(in crate::api) fn press_out_get_xl_l_h(&mut self) -> Result<i32, Lps22dfError<T::Error>> {
+    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Lps22dfError<T::Error>> {
         let mut arr: [u8; 3] = [0; 3];
         self.read_from_register(Reg::PressOutXl, &mut arr)?;
         let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i32) << 16;
+
+        Ok(val)
+    }
+
+    pub(super) fn press_out_h_get(&mut self) -> Result<u8, Lps22dfError<T::Error>> {
+        let mut arr: [u8; 1] = [0];
+        self.read_from_register(Reg::PressOutH, &mut arr)?;
+        let val: u8 = arr[0];
 
         Ok(val)
     }
@@ -161,8 +264,11 @@ impl<T: super::BusOperation> super::Lps22df<T> {
 pub enum Reg {
     WhoAmI = 0xF,
     CtrlReg1 = 0x10,
+    CtrlReg2 = 0x11,
+    CtrlReg4 = 0x13,
     Status = 0x27,
     PressOutXl = 0x28,
+    PressOutH = 0x2A,
     TempOutL = 0x2B,
 }
 
@@ -172,6 +278,31 @@ bitfield! {
     not_used7, _: 7, 7;
     ctrl_reg1_odr, set_ctrl_reg1_odr: 6, 3;
     ctrl_reg1_avg, set_ctrl_reg1_avg: 2, 0;
+}
+
+bitfield! {
+    pub struct CtrlReg2(u8);
+    ctrl_reg2, _: 7, 0;
+    ctrl_reg2_boot, set_ctrl_reg2_boot: 6, 6;
+    ctrl_reg2_lfpf_cfg, set_ctrl_reg2_lfpf_cfg: 5, 5;
+    ctrl_reg2_en_lpfp, set_ctrl_reg2_en_lpfp: 4, 4;
+    ctrl_reg2_bdu, set_ctrl_reg2_bdu: 3, 3;
+    ctrl_reg2_swreset, set_ctrl_reg2_swreset: 2, 2;
+    not_used1, _: 1, 1;
+    ctrl_reg2_oneshot, set_ctrl_reg2_oneshot: 0, 0;
+}
+
+bitfield! {
+    pub struct CtrlReg4(u8);
+    ctrl_reg4, _: 7, 0;
+    not_used7, _: 7, 7;
+    ctrl_reg4_drdy_pls, set_ctrl_reg4_drdy_pls: 6, 6;
+    ctrl_reg4_drdy, set_ctrl_reg4_drdy: 5, 5;
+    ctrl_reg4_int_en, set_ctrl_reg4_int_en: 4, 4;
+    not_used3, _: 3, 3;
+    ctrl_reg4_int_f_full, set_ctrl_reg4_int_f_full: 2, 2;
+    ctrl_reg4_int_f_wtm, set_ctrl_reg4_int_f_wtm: 1, 1;
+    ctrl_reg4_int_f_ovr, set_ctrl_reg4_int_f_ovr: 0, 0;
 }
 
 bitfield! {
@@ -185,8 +316,9 @@ bitfield! {
     status_p_da, _: 0, 0;
 }
 
+#[derive(PartialEq)]
 #[repr(u8)]
-pub(in crate::api) enum CtrlReg1Odr {
+pub(super) enum CtrlReg1Odr {
     PowerDownOneShot = 0b0000,
     Hz1 = 0b0001,
     Hz4 = 0b0010,
@@ -215,7 +347,7 @@ impl From<u32> for CtrlReg1Odr {
 }
 
 #[repr(u8)]
-pub(in crate::api) enum CtrlReg1Avg {
+pub(super) enum CtrlReg1Avg {
     Avg4 = 0b000,
     Avg8 = 0b001,
     Avg16 = 0b010,
