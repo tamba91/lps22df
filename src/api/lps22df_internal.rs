@@ -25,97 +25,75 @@ impl<P: SpiDevice> Lps22dfSPI<P> {
     }
 }
 
-pub trait BusOperation {
-    type Error;
-
-    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Lps22dfError<Self::Error>>;
-    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Lps22dfError<Self::Error>>;
-    fn write_read_bytes(
-        &mut self,
-        wbuf: &[u8],
-        rbuf: &mut [u8],
-    ) -> Result<(), Lps22dfError<Self::Error>>;
-}
-
-impl<P: I2c> BusOperation for Lps22dfI2C<P> {
+impl<P: I2c> super::BusOperation for Lps22dfI2C<P> {
     type Error = P::Error;
 
     #[inline]
-    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Lps22dfError<Self::Error>> {
-        self.i2c
-            .read(self.address, rbuf)
-            .map_err(Lps22dfError::I2C)?;
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error> {
+        self.i2c.read(self.address, rbuf)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Lps22dfError<Self::Error>> {
-        self.i2c
-            .write(self.address, wbuf)
-            .map_err(Lps22dfError::I2C)?;
+    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error> {
+        self.i2c.write(self.address, wbuf)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_read_bytes(
-        &mut self,
-        wbuf: &[u8],
-        rbuf: &mut [u8],
-    ) -> Result<(), Lps22dfError<Self::Error>> {
-        self.i2c
-            .write_read(self.address, wbuf, rbuf)
-            .map_err(Lps22dfError::I2C)?;
+    fn write_read_bytes(&mut self, wbuf: &[u8], rbuf: &mut [u8]) -> Result<(), Self::Error> {
+        self.i2c.write_read(self.address, wbuf, rbuf)?;
 
         Ok(())
     }
 }
 
-impl<P: SpiDevice> BusOperation for Lps22dfSPI<P> {
+impl<P: SpiDevice> super::BusOperation for Lps22dfSPI<P> {
     type Error = P::Error;
 
     #[inline]
-    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Lps22dfError<Self::Error>> {
-        self.spi.read(rbuf).map_err(Lps22dfError::SPI)?;
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error> {
+        self.spi.read(rbuf)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Lps22dfError<Self::Error>> {
-        self.spi.write(wbuf).map_err(Lps22dfError::SPI)?;
+    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error> {
+        self.spi.write(wbuf)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_read_bytes(
-        &mut self,
-        wbuf: &[u8],
-        rbuf: &mut [u8],
-    ) -> Result<(), Lps22dfError<Self::Error>> {
-        self.spi.write(wbuf).map_err(Lps22dfError::SPI)?;
-        self.spi.read(rbuf).map_err(Lps22dfError::SPI)?;
+    fn write_read_bytes(&mut self, wbuf: &[u8], rbuf: &mut [u8]) -> Result<(), Self::Error> {
+        self.spi.write(wbuf)?;
+        self.spi.read(rbuf)?;
 
         Ok(())
     }
 }
 
-impl<T: BusOperation> super::Lps22df<T> {
+impl<B: super::BusOperation> super::Lps22df<B> {
     fn read_from_register(
         &mut self,
         reg: Reg,
         buf: &mut [u8],
-    ) -> Result<(), Lps22dfError<T::Error>> {
-        self.bus.write_read_bytes(&[reg as u8], buf)?;
+    ) -> Result<(), Lps22dfError<B::Error>> {
+        self.bus
+            .write_read_bytes(&[reg as u8], buf)
+            .map_err(Lps22dfError::Bus)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_to_register(&mut self, reg: Reg, val: u8) -> Result<(), Lps22dfError<T::Error>> {
-        self.bus.write_bytes(&[reg as u8, val])?;
+    fn write_to_register(&mut self, reg: Reg, val: u8) -> Result<(), Lps22dfError<B::Error>> {
+        self.bus
+            .write_bytes(&[reg as u8, val])
+            .map_err(Lps22dfError::Bus)?;
         let mut arr: [u8; 1] = [0];
         self.read_from_register(reg, &mut arr)?;
         if arr[0] != val {
@@ -130,20 +108,22 @@ impl<T: BusOperation> super::Lps22df<T> {
         &mut self,
         reg: Reg,
         val: u8,
-    ) -> Result<(), Lps22dfError<T::Error>> {
-        self.bus.write_bytes(&[reg as u8, val])?;
+    ) -> Result<(), Lps22dfError<B::Error>> {
+        self.bus
+            .write_bytes(&[reg as u8, val])
+            .map_err(Lps22dfError::Bus)?;
 
         Ok(())
     }
 
-    pub(super) fn who_am_i_get(&mut self) -> Result<u8, Lps22dfError<T::Error>> {
+    pub(super) fn who_am_i_get(&mut self) -> Result<u8, Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::WhoAmI, &mut arr)?;
 
         Ok(arr[0])
     }
 
-    pub(super) fn ctrl_reg1_get_odr(&mut self) -> Result<CtrlReg1Odr, Lps22dfError<T::Error>> {
+    pub(super) fn ctrl_reg1_get_odr(&mut self) -> Result<CtrlReg1Odr, Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg1, &mut arr)?;
         let val = (CtrlReg1(arr[0]).ctrl_reg1_odr()) as u32;
@@ -155,7 +135,7 @@ impl<T: BusOperation> super::Lps22df<T> {
     pub(super) fn ctrl_reg1_set_odr(
         &mut self,
         odr: CtrlReg1Odr,
-    ) -> Result<(), Lps22dfError<T::Error>> {
+    ) -> Result<(), Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg1, &mut arr)?;
         let mut val = CtrlReg1(arr[0]);
@@ -168,7 +148,7 @@ impl<T: BusOperation> super::Lps22df<T> {
     pub(super) fn ctrl_reg1_set_avg(
         &mut self,
         avg: CtrlReg1Avg,
-    ) -> Result<(), Lps22dfError<T::Error>> {
+    ) -> Result<(), Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg1, &mut arr)?;
         let mut val = CtrlReg1(arr[0]);
@@ -177,7 +157,7 @@ impl<T: BusOperation> super::Lps22df<T> {
 
         Ok(())
     }
-    pub(super) fn ctrl_reg2_get_oneshot(&mut self) -> Result<bool, Lps22dfError<T::Error>> {
+    pub(super) fn ctrl_reg2_get_oneshot(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg2, &mut arr)?;
         let val = CtrlReg2(arr[0]).ctrl_reg2_oneshot();
@@ -185,7 +165,7 @@ impl<T: BusOperation> super::Lps22df<T> {
         Ok(val != 0)
     }
 
-    pub(super) fn ctrl_reg2_set_oneshot(&mut self) -> Result<(), Lps22dfError<T::Error>> {
+    pub(super) fn ctrl_reg2_set_oneshot(&mut self) -> Result<(), Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg2, &mut arr)?;
         let mut val = CtrlReg2(arr[0]);
@@ -198,7 +178,7 @@ impl<T: BusOperation> super::Lps22df<T> {
     pub(super) fn ctrl_reg4_set_drdy_pulsed(
         &mut self,
         drdy_pulsed: bool,
-    ) -> Result<(), Lps22dfError<T::Error>> {
+    ) -> Result<(), Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
@@ -208,7 +188,7 @@ impl<T: BusOperation> super::Lps22df<T> {
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_drdy(&mut self, drdy: bool) -> Result<(), Lps22dfError<T::Error>> {
+    pub(super) fn ctrl_reg4_set_drdy(&mut self, drdy: bool) -> Result<(), Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
@@ -218,7 +198,7 @@ impl<T: BusOperation> super::Lps22df<T> {
         Ok(())
     }
 
-    pub(super) fn status_get_t_da(&mut self) -> Result<bool, Lps22dfError<T::Error>> {
+    pub(super) fn status_get_t_da(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status, &mut arr)?;
         let val = Status(arr[0]);
@@ -226,7 +206,7 @@ impl<T: BusOperation> super::Lps22df<T> {
         Ok(val.status_t_da() != 0)
     }
 
-    pub(super) fn status_get_p_da(&mut self) -> Result<bool, Lps22dfError<T::Error>> {
+    pub(super) fn status_get_p_da(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status, &mut arr)?;
         let val = Status(arr[0]);
@@ -234,7 +214,7 @@ impl<T: BusOperation> super::Lps22df<T> {
         Ok(val.status_p_da() != 0)
     }
 
-    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i32, Lps22dfError<T::Error>> {
+    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i32, Lps22dfError<B::Error>> {
         let mut arr: [u8; 2] = [0; 2];
         self.read_from_register(Reg::TempOutL, &mut arr)?;
         let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8;
@@ -242,7 +222,7 @@ impl<T: BusOperation> super::Lps22df<T> {
         Ok(val)
     }
 
-    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Lps22dfError<T::Error>> {
+    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Lps22dfError<B::Error>> {
         let mut arr: [u8; 3] = [0; 3];
         self.read_from_register(Reg::PressOutXl, &mut arr)?;
         let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i32) << 16;
@@ -250,7 +230,7 @@ impl<T: BusOperation> super::Lps22df<T> {
         Ok(val)
     }
 
-    pub(super) fn press_out_h_get(&mut self) -> Result<u8, Lps22dfError<T::Error>> {
+    pub(super) fn press_out_h_get(&mut self) -> Result<u8, Lps22dfError<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::PressOutH, &mut arr)?;
         let val: u8 = arr[0];
