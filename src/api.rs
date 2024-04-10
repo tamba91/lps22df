@@ -30,7 +30,7 @@ pub trait BusOperation {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Lps22dfError<B> {
+pub enum Error<B> {
     Bus(B),
     WhoAmIError(u8),
     WriteFailure,
@@ -49,7 +49,7 @@ pub enum SignalMode {
 #[repr(u8)]
 pub enum FifoMode {
     Bypass = 0b000,
-    FifoMode = 0b001,
+    FIFOMode = 0b001,
     Continuous = 0b010,
     BypassToFifo = 0b101,
     BypassToContinuous = 0b110,
@@ -57,71 +57,71 @@ pub enum FifoMode {
 }
 
 impl<B: BusOperation> Lps22df<B> {
-    pub fn who_am_i(&mut self) -> Result<u8, Lps22dfError<B::Error>> {
+    pub fn who_am_i(&mut self) -> Result<u8, Error<B::Error>> {
         let res = self.who_am_i_get()?;
 
         if res != 0xB4 {
-            return Err(Lps22dfError::WhoAmIError(res));
+            return Err(Error::WhoAmIError(res));
         }
 
         Ok(res)
     }
 
-    pub fn get_odr(&mut self) -> Result<u32, Lps22dfError<B::Error>> {
+    pub fn get_odr(&mut self) -> Result<u32, Error<B::Error>> {
         let odr: u32 = self.ctrl_reg1_get_odr()?.into();
 
         Ok(odr)
     }
 
-    pub fn set_odr(&mut self, odr: u32) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn set_odr(&mut self, odr: u32) -> Result<(), Error<B::Error>> {
         let odr: lps22df_internal::CtrlReg1Odr = odr.into();
         self.ctrl_reg1_set_odr(odr)?;
 
         Ok(())
     }
 
-    pub fn get_avg(&mut self) -> Result<u32, Lps22dfError<B::Error>> {
+    pub fn get_avg(&mut self) -> Result<u32, Error<B::Error>> {
         let avg: u32 = self.ctrl_reg1_get_avg()?.into();
 
         Ok(avg)
     }
 
-    pub fn set_avg(&mut self, avg: u32) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn set_avg(&mut self, avg: u32) -> Result<(), Error<B::Error>> {
         let avg: lps22df_internal::CtrlReg1Avg = avg.into();
         self.ctrl_reg1_set_avg(avg)?;
 
         Ok(())
     }
 
-    pub fn is_press_data_avail(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub fn is_press_data_avail(&mut self) -> Result<bool, Error<B::Error>> {
         let val = self.status_get_p_da()?;
 
         Ok(val)
     }
 
-    pub fn is_temp_data_avail(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub fn is_temp_data_avail(&mut self) -> Result<bool, Error<B::Error>> {
         let val = self.status_get_t_da()?;
 
         Ok(val)
     }
 
-    pub fn get_temp(&mut self) -> Result<f32, Lps22dfError<B::Error>> {
+    pub fn get_temp(&mut self) -> Result<f32, Error<B::Error>> {
         let raw = self.temp_out_l_h_get()?;
         let val = raw as f32 / 100.0;
 
         Ok(val)
     }
 
-    pub fn get_press(&mut self) -> Result<f32, Lps22dfError<B::Error>> {
+    pub fn get_press(&mut self) -> Result<f32, Error<B::Error>> {
         let raw = self.press_out_xl_l_h_get()?;
         let val = raw as f32 / 4096.0;
 
         Ok(val)
     }
 
-    pub fn get_oneshot(&mut self) -> Result<(f32, f32), Lps22dfError<B::Error>> {
+    pub fn get_oneshot(&mut self) -> Result<(f32, f32), Error<B::Error>> {
         if self.ctrl_reg1_get_odr()? != lps22df_internal::CtrlReg1Odr::PowerDownOneShot {
-            return Err(Lps22dfError::ContinuosModeEnabled);
+            return Err(Error::ContinuosModeEnabled);
         }
 
         self.ctrl_reg2_set_oneshot()?;
@@ -140,7 +140,7 @@ impl<B: BusOperation> Lps22df<B> {
     pub fn enable_drdy_to_int(
         &mut self,
         signal_mode: SignalMode,
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         match signal_mode {
             SignalMode::Pulsed => self.ctrl_reg4_set_drdy_pulsed(true)?,
             SignalMode::Latched => {
@@ -153,43 +153,43 @@ impl<B: BusOperation> Lps22df<B> {
         Ok(())
     }
 
-    pub fn disable_drdy_to_int(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn disable_drdy_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_drdy(false)?;
 
         Ok(())
     }
 
-    pub fn enable_fifo_full_to_int(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn enable_fifo_full_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_int_f_full(true)?;
 
         Ok(())
     } 
 
-    pub fn disable_fifo_full_to_int(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn disable_fifo_full_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_int_f_full(false)?;
 
         Ok(())
     }
 
-    pub fn enable_fifo_watermark_to_int(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn enable_fifo_watermark_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_int_f_wtm(true)?;
 
         Ok(())
     }
 
-    pub fn disable_fifo_watermark_to_int(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn disable_fifo_watermark_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_int_f_wtm(false)?;
 
         Ok(())
     }
 
-    pub fn enable_fifo_overwritten_to_int(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn enable_fifo_overwritten_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_int_f_ovr(true)?;
 
         Ok(())
     } 
 
-    pub fn disable_fifo_overwritten_to_int(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn disable_fifo_overwritten_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_int_f_ovr(false)?;
 
         Ok(())
@@ -200,7 +200,7 @@ impl<B: BusOperation> Lps22df<B> {
         mode: FifoMode,
         enable_wtm: bool,
         wtm_level: Option<u8>,
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         self.fifo_ctrl_set_trig_modes_f_mode(FifoMode::Bypass)?;
         match wtm_level {
             Some(value) => match value {
@@ -227,7 +227,7 @@ impl<B: BusOperation> Lps22df<B> {
         Ok(())
     }
 
-    pub fn disable_fifo(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn disable_fifo(&mut self) -> Result<(), Error<B::Error>> {
         self.fifo_ctrl_set_trig_modes_f_mode(FifoMode::Bypass)?;
         self.fifo_wtm_set(0)?;
         self.fifo_ctrl_set_stop_on_wtm(false)?;
@@ -235,36 +235,36 @@ impl<B: BusOperation> Lps22df<B> {
         Ok(())
     }
 
-    pub fn get_fifo_data_length(&mut self) -> Result<u32, Lps22dfError<B::Error>> {
+    pub fn get_fifo_data_length(&mut self) -> Result<u32, Error<B::Error>> {
         if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
             self.fifo_ctrl_get_trig_modes_f_mode()?
         {
-            return Err(Lps22dfError::FifoNotEnabled);
+            return Err(Error::FifoNotEnabled);
         }
         let val: u32 = self.fifo_status1_get()? as u32;
 
         Ok(val)
     }
 
-    pub fn is_watermark_full(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub fn is_watermark_full(&mut self) -> Result<bool, Error<B::Error>> {
         if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
             self.fifo_ctrl_get_trig_modes_f_mode()?
         {
-            return Err(Lps22dfError::FifoNotEnabled);
+            return Err(Error::FifoNotEnabled);
         }
         let res = self.fifo_status2_get_fifo_wtm_ia()?;
 
         Ok(res)
     }
 
-    pub fn is_fifo_full(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub fn is_fifo_full(&mut self) -> Result<bool, Error<B::Error>> {
         if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
             self.fifo_ctrl_get_trig_modes_f_mode()?
         {
-            return Err(Lps22dfError::FifoNotEnabled);
+            return Err(Error::FifoNotEnabled);
         }
         if let true = self.fifo_ctrl_get_stop_on_wtm()? {
-            return Err(Lps22dfError::WatermarkEnabled);
+            return Err(Error::WatermarkEnabled);
         }
         let res = self.fifo_status2_get_fifo_full_ia()?;
 
@@ -273,22 +273,22 @@ impl<B: BusOperation> Lps22df<B> {
 
     //pub fn is_fifo_full
 
-    pub fn is_fifo_overwritten(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub fn is_fifo_overwritten(&mut self) -> Result<bool, Error<B::Error>> {
         if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
             self.fifo_ctrl_get_trig_modes_f_mode()?
         {
-            return Err(Lps22dfError::FifoNotEnabled);
+            return Err(Error::FifoNotEnabled);
         }
         let res = self.fifo_status2_get_fifo_ovr_ia()?;
 
         Ok(res)
     }
 
-    pub fn read_fifo(&mut self, buffer: &mut [Option<f32>]) -> Result<(), Lps22dfError<B::Error>> {
+    pub fn read_fifo(&mut self, buffer: &mut [Option<f32>]) -> Result<(), Error<B::Error>> {
         let mode = self.fifo_ctrl_get_trig_modes_f_mode()?;
 
         if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo = mode {
-            return Err(Lps22dfError::FifoNotEnabled);
+            return Err(Error::FifoNotEnabled);
         }
 
         let min_length = core::cmp::min(self.fifo_status1_get()? as usize, buffer.len());
@@ -302,7 +302,7 @@ impl<B: BusOperation> Lps22df<B> {
             buffer[i] = None;
         }
 
-        if let FifoMode::FifoMode = mode {
+        if let FifoMode::FIFOMode = mode {
             if let true = self.fifo_status2_get_fifo_wtm_ia()? {
                 self.fifo_ctrl_set_trig_modes_f_mode(FifoMode::Bypass)?;
                 self.fifo_ctrl_set_trig_modes_f_mode(mode)?;

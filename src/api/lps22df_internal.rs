@@ -4,7 +4,7 @@ use bitfield::bitfield;
 use embedded_hal::i2c::{I2c, SevenBitAddress};
 use embedded_hal::spi::SpiDevice;
 
-use super::Lps22dfError;
+use super::Error;
 
 pub struct Lps22dfI2C<P> {
     i2c: P,
@@ -83,23 +83,23 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         &mut self,
         reg: Reg,
         buf: &mut [u8],
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         self.bus
             .write_read_bytes(&[reg as u8], buf)
-            .map_err(Lps22dfError::Bus)?;
+            .map_err(Error::Bus)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_to_register(&mut self, reg: Reg, val: u8) -> Result<(), Lps22dfError<B::Error>> {
+    fn write_to_register(&mut self, reg: Reg, val: u8) -> Result<(), Error<B::Error>> {
         self.bus
             .write_bytes(&[reg as u8, val])
-            .map_err(Lps22dfError::Bus)?;
+            .map_err(Error::Bus)?;
         let mut arr: [u8; 1] = [0];
         self.read_from_register(reg, &mut arr)?;
         if arr[0] != val {
-            return Err(Lps22dfError::WriteFailure);
+            return Err(Error::WriteFailure);
         }
 
         Ok(())
@@ -110,22 +110,22 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         &mut self,
         reg: Reg,
         val: u8,
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         self.bus
             .write_bytes(&[reg as u8, val])
-            .map_err(Lps22dfError::Bus)?;
+            .map_err(Error::Bus)?;
 
         Ok(())
     }
 
-    pub(super) fn who_am_i_get(&mut self) -> Result<u8, Lps22dfError<B::Error>> {
+    pub(super) fn who_am_i_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::WhoAmI, &mut arr)?;
 
         Ok(arr[0])
     }
 
-    pub(super) fn ctrl_reg1_get_odr(&mut self) -> Result<CtrlReg1Odr, Lps22dfError<B::Error>> {
+    pub(super) fn ctrl_reg1_get_odr(&mut self) -> Result<CtrlReg1Odr, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg1, &mut arr)?;
         let val = (CtrlReg1(arr[0]).ctrl_reg1_odr()) as u8;
@@ -137,7 +137,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn ctrl_reg1_set_odr(
         &mut self,
         odr: CtrlReg1Odr,
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg1, &mut arr)?;
         let mut val = CtrlReg1(arr[0]);
@@ -147,7 +147,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(())
     }
 
-    pub(super) fn ctrl_reg1_get_avg(&mut self) -> Result<CtrlReg1Avg, Lps22dfError<B::Error>> {
+    pub(super) fn ctrl_reg1_get_avg(&mut self) -> Result<CtrlReg1Avg, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg1, &mut arr)?;
         let val = (CtrlReg1(arr[0]).ctrl_reg1_avg()) as u8;
@@ -159,7 +159,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn ctrl_reg1_set_avg(
         &mut self,
         avg: CtrlReg1Avg,
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg1, &mut arr)?;
         let mut val = CtrlReg1(arr[0]);
@@ -168,7 +168,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
 
         Ok(())
     }
-    pub(super) fn ctrl_reg2_get_oneshot(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub(super) fn ctrl_reg2_get_oneshot(&mut self) -> Result<bool, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg2, &mut arr)?;
         let val = CtrlReg2(arr[0]).ctrl_reg2_oneshot();
@@ -176,7 +176,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val != 0)
     }
 
-    pub(super) fn ctrl_reg2_set_oneshot(&mut self) -> Result<(), Lps22dfError<B::Error>> {
+    pub(super) fn ctrl_reg2_set_oneshot(&mut self) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg2, &mut arr)?;
         let mut val = CtrlReg2(arr[0]);
@@ -189,7 +189,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn ctrl_reg4_set_drdy_pulsed(
         &mut self,
         drdy_pulsed: bool,
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
@@ -199,7 +199,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_drdy(&mut self, drdy: bool) -> Result<(), Lps22dfError<B::Error>> {
+    pub(super) fn ctrl_reg4_set_drdy(&mut self, drdy: bool) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
@@ -209,7 +209,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_int_f_full(&mut self, int_f_fool: bool) -> Result<(), Lps22dfError<B::Error>> {
+    pub(super) fn ctrl_reg4_set_int_f_full(&mut self, int_f_fool: bool) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
@@ -219,7 +219,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_int_f_wtm(&mut self, int_f_wtm: bool) -> Result<(), Lps22dfError<B::Error>> {
+    pub(super) fn ctrl_reg4_set_int_f_wtm(&mut self, int_f_wtm: bool) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
@@ -229,7 +229,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_int_f_ovr(&mut self, int_f_ovr: bool) -> Result<(), Lps22dfError<B::Error>> {
+    pub(super) fn ctrl_reg4_set_int_f_ovr(&mut self, int_f_ovr: bool) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
@@ -242,7 +242,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn fifo_ctrl_set_trig_modes_f_mode(
         &mut self,
         trig_modes_f_mode: super::FifoMode,
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::FifoCtrl, &mut arr)?;
         let mut val = FifoCtrl(arr[0]);
@@ -254,7 +254,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
 
     pub(super) fn fifo_ctrl_get_trig_modes_f_mode(
         &mut self,
-    ) -> Result<super::FifoMode, Lps22dfError<B::Error>> {
+    ) -> Result<super::FifoMode, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::FifoCtrl, &mut arr)?;
         let val = FifoCtrl(arr[0]).fifo_ctrl_trig_modes_f_mode();
@@ -266,7 +266,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn fifo_ctrl_set_stop_on_wtm(
         &mut self,
         stop_on_wtm: bool,
-    ) -> Result<(), Lps22dfError<B::Error>> {
+    ) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::FifoCtrl, &mut arr)?;
         let mut val = FifoCtrl(arr[0]);
@@ -276,7 +276,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(())
     }
 
-    pub(super) fn fifo_ctrl_get_stop_on_wtm(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub(super) fn fifo_ctrl_get_stop_on_wtm(&mut self) -> Result<bool, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::FifoCtrl, &mut arr)?;
         let val = FifoCtrl(arr[0]).fifo_ctrl_stop_on_wtm();
@@ -284,20 +284,20 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val != 0)
     }
 
-    pub(super) fn fifo_wtm_set(&mut self, wtm: u8) -> Result<(), Lps22dfError<B::Error>> {
+    pub(super) fn fifo_wtm_set(&mut self, wtm: u8) -> Result<(), Error<B::Error>> {
         self.write_to_register(Reg::FifoWtm, wtm & 0x7F)?;
 
         Ok(())
     }
 
-    pub(super) fn fifo_status1_get(&mut self) -> Result<u8, Lps22dfError<B::Error>> {
+    pub(super) fn fifo_status1_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::FifoStatus1, &mut arr)?;
 
         Ok(arr[0])
     }
 
-    pub(super) fn fifo_status2_get_fifo_wtm_ia(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub(super) fn fifo_status2_get_fifo_wtm_ia(&mut self) -> Result<bool, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::FifoStatus2, &mut arr)?;
         let val = FifoStatus2(arr[0]).fifo_status2_fifo_wtm_ia();
@@ -305,7 +305,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val != 0)
     }
 
-    pub(super) fn fifo_status2_get_fifo_ovr_ia(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub(super) fn fifo_status2_get_fifo_ovr_ia(&mut self) -> Result<bool, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::FifoStatus2, &mut arr)?;
         let val = FifoStatus2(arr[0]).fifo_status2_fifo_ovr_ia();
@@ -313,7 +313,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val != 0)
     }
 
-    pub(super) fn fifo_status2_get_fifo_full_ia(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub(super) fn fifo_status2_get_fifo_full_ia(&mut self) -> Result<bool, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::FifoStatus2, &mut arr)?;
         let val = FifoStatus2(arr[0]).fifo_status2_fifo_full_ia();
@@ -321,7 +321,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val != 0)
     }
 
-    pub(super) fn status_get_t_da(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub(super) fn status_get_t_da(&mut self) -> Result<bool, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status, &mut arr)?;
         let val = Status(arr[0]);
@@ -329,7 +329,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val.status_t_da() != 0)
     }
 
-    pub(super) fn status_get_p_da(&mut self) -> Result<bool, Lps22dfError<B::Error>> {
+    pub(super) fn status_get_p_da(&mut self) -> Result<bool, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status, &mut arr)?;
         let val = Status(arr[0]);
@@ -337,7 +337,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val.status_p_da() != 0)
     }
 
-    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i32, Lps22dfError<B::Error>> {
+    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i32, Error<B::Error>> {
         let mut arr: [u8; 2] = [0; 2];
         self.read_from_register(Reg::TempOutL, &mut arr)?;
         let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8;
@@ -345,7 +345,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val)
     }
 
-    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Lps22dfError<B::Error>> {
+    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Error<B::Error>> {
         let mut arr: [u8; 3] = [0; 3];
         self.read_from_register(Reg::PressOutXl, &mut arr)?;
         let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i32) << 16;
@@ -353,7 +353,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val)
     }
 
-    pub(super) fn press_out_h_get(&mut self) -> Result<u8, Lps22dfError<B::Error>> {
+    pub(super) fn press_out_h_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::PressOutH, &mut arr)?;
         let val: u8 = arr[0];
@@ -361,7 +361,7 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val)
     }
 
-    pub(super) fn fifo_data_out_press_xl_l_h_get(&mut self) -> Result<i32, Lps22dfError<B::Error>> {
+    pub(super) fn fifo_data_out_press_xl_l_h_get(&mut self) -> Result<i32, Error<B::Error>> {
         let mut arr: [u8; 3] = [0; 3];
         self.read_from_register(Reg::FifoDataOutPressXl, &mut arr)?;
         let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i32) << 16;
@@ -567,7 +567,7 @@ impl From<u8> for super::FifoMode {
     fn from(value: u8) -> Self {
         match value {
             0b000 => Self::Bypass,
-            0b001 => Self::FifoMode,
+            0b001 => Self::FIFOMode,
             0b010 => Self::Continuous,
             0b011 => Self::Continuous,
             0b100 => Self::Bypass,
