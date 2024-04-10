@@ -8,8 +8,8 @@ pub struct Lps22df<B> {
 }
 
 impl<P: I2c> Lps22df<lps22df_internal::Lps22dfI2C<P>> {
-    pub fn new_i2c(i2c: P, address: SevenBitAddress) -> Self {
-        let bus = lps22df_internal::Lps22dfI2C::new(i2c, address);
+    pub fn new_i2c(i2c: P, address: I2CAddress) -> Self {
+        let bus = lps22df_internal::Lps22dfI2C::new(i2c, address as u8);
         Self { bus }
     }
 }
@@ -27,6 +27,13 @@ pub trait BusOperation {
     fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error>;
     fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error>;
     fn write_read_bytes(&mut self, wbuf: &[u8], rbuf: &mut [u8]) -> Result<(), Self::Error>;
+}
+
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum I2CAddress {
+    Address0 = 0x5C,
+    Address1 = 0x5D,
 }
 
 #[derive(Copy, Clone, Debug)]
