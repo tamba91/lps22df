@@ -37,7 +37,9 @@ pub enum Error<B> {
     ContinuosModeEnabled,
     PowerDownOneShotModeEnabled,
     FifoNotEnabled,
+    FifoIsRunning,
     WatermarkEnabled,
+    InvalidWatermarkValue,
 }
 
 pub enum SignalMode {
@@ -137,10 +139,7 @@ impl<B: BusOperation> Lps22df<B> {
         Ok((press, temp))
     }
 
-    pub fn enable_drdy_to_int(
-        &mut self,
-        signal_mode: SignalMode,
-    ) -> Result<(), Error<B::Error>> {
+    pub fn enable_drdy_to_int(&mut self, signal_mode: SignalMode) -> Result<(), Error<B::Error>> {
         match signal_mode {
             SignalMode::Pulsed => self.ctrl_reg4_set_drdy_pulsed(true)?,
             SignalMode::Latched => {
@@ -163,7 +162,7 @@ impl<B: BusOperation> Lps22df<B> {
         self.ctrl_reg4_set_int_f_full(true)?;
 
         Ok(())
-    } 
+    }
 
     pub fn disable_fifo_full_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_int_f_full(false)?;
@@ -187,52 +186,67 @@ impl<B: BusOperation> Lps22df<B> {
         self.ctrl_reg4_set_int_f_ovr(true)?;
 
         Ok(())
-    } 
+    }
 
     pub fn disable_fifo_overwritten_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_int_f_ovr(false)?;
 
         Ok(())
-    }  
-
-    pub fn enable_fifo(
-        &mut self,
-        mode: FifoMode,
-        enable_wtm: bool,
-        wtm_level: Option<u8>,
-    ) -> Result<(), Error<B::Error>> {
-        self.fifo_ctrl_set_trig_modes_f_mode(FifoMode::Bypass)?;
-        match wtm_level {
-            Some(value) => match value {
-                0 => {
-                    self.fifo_wtm_set(0)?;
-                    self.fifo_ctrl_set_stop_on_wtm(false)?;
-                }
-                1..=127 => {
-                    self.fifo_wtm_set(value)?;
-                    self.fifo_ctrl_set_stop_on_wtm(enable_wtm)?;
-                }
-                128.. => {
-                    self.fifo_wtm_set(127)?;
-                    self.fifo_ctrl_set_stop_on_wtm(enable_wtm)?;
-                }
-            },
-            None => {
-                self.fifo_wtm_set(0)?;
-                self.fifo_ctrl_set_stop_on_wtm(false)?;
-            }
-        }
-        self.fifo_ctrl_set_trig_modes_f_mode(mode)?;
-
-        Ok(())
     }
 
-    pub fn disable_fifo(&mut self) -> Result<(), Error<B::Error>> {
-        self.fifo_ctrl_set_trig_modes_f_mode(FifoMode::Bypass)?;
-        self.fifo_wtm_set(0)?;
-        self.fifo_ctrl_set_stop_on_wtm(false)?;
+    pub fn set_fifo_mode(&mut self, mode: FifoMode) -> Result<(), Error<B::Error>> {
+        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
+            self.fifo_ctrl_get_trig_modes_f_mode()?
+        {
+            self.fifo_ctrl_set_trig_modes_f_mode(mode)?;
 
-        Ok(())
+            return Ok(());
+        }
+
+        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo = mode {
+            self.fifo_ctrl_set_trig_modes_f_mode(mode)?;
+
+            return Ok(());
+        } else {
+            return Err(Error::FifoIsRunning);
+        }
+    }
+
+    pub fn set_fifo_watermark(
+        &mut self,
+        enable_size_fifo_to_watermark: bool,
+        watermark_level: u8,
+    ) -> Result<(), Error<B::Error>> {
+        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
+            self.fifo_ctrl_get_trig_modes_f_mode()?
+        {
+            match enable_size_fifo_to_watermark {
+                true => match watermark_level {
+                    0 => return Err(Error::InvalidWatermarkValue),
+                    1..=127 => {
+                        self.fifo_ctrl_set_stop_on_wtm(true)?;
+                        self.fifo_wtm_set(watermark_level)?;
+                        return Ok(());
+                    }
+                    128.. => return Err(Error::InvalidWatermarkValue),
+                },
+                false => match watermark_level {
+                    0 => {
+                        self.fifo_ctrl_set_stop_on_wtm(false)?;
+                        self.fifo_wtm_set(0)?;
+                        return Ok(());
+                    }
+                    1..=127 => {
+                        self.fifo_ctrl_set_stop_on_wtm(false)?;
+                        self.fifo_wtm_set(watermark_level)?;
+                        return Ok(());
+                    }
+                    128.. => return Err(Error::InvalidWatermarkValue),
+                },
+            }
+        } else {
+            return Err(Error::FifoIsRunning);
+        }
     }
 
     pub fn get_fifo_data_length(&mut self) -> Result<u32, Error<B::Error>> {
@@ -271,8 +285,6 @@ impl<B: BusOperation> Lps22df<B> {
         Ok(res)
     }
 
-    //pub fn is_fifo_full
-
     pub fn is_fifo_overwritten(&mut self) -> Result<bool, Error<B::Error>> {
         if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
             self.fifo_ctrl_get_trig_modes_f_mode()?
@@ -285,9 +297,9 @@ impl<B: BusOperation> Lps22df<B> {
     }
 
     pub fn read_fifo(&mut self, buffer: &mut [Option<f32>]) -> Result<(), Error<B::Error>> {
-        let mode = self.fifo_ctrl_get_trig_modes_f_mode()?;
-
-        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo = mode {
+        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
+            self.fifo_ctrl_get_trig_modes_f_mode()?
+        {
             return Err(Error::FifoNotEnabled);
         }
 
@@ -300,21 +312,6 @@ impl<B: BusOperation> Lps22df<B> {
 
         for i in min_length..buffer.len() {
             buffer[i] = None;
-        }
-
-        if let FifoMode::FIFOMode = mode {
-            if let true = self.fifo_status2_get_fifo_wtm_ia()? {
-                self.fifo_ctrl_set_trig_modes_f_mode(FifoMode::Bypass)?;
-                self.fifo_ctrl_set_trig_modes_f_mode(mode)?;
-            }
-            if let true = self.fifo_status2_get_fifo_full_ia()? {
-                self.fifo_ctrl_set_trig_modes_f_mode(FifoMode::Bypass)?;
-                self.fifo_ctrl_set_trig_modes_f_mode(mode)?;
-            }
-            if let true = self.fifo_status2_get_fifo_ovr_ia()? {
-                self.fifo_ctrl_set_trig_modes_f_mode(FifoMode::Bypass)?;
-                self.fifo_ctrl_set_trig_modes_f_mode(mode)?;
-            }
         }
 
         Ok(())
