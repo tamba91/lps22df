@@ -346,10 +346,10 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val)
     }
 
-    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Error<B::Error>> {
+    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<u32, Error<B::Error>> {
         let mut arr: [u8; 3] = [0; 3];
         self.read_from_register(Reg::PressOutXl, &mut arr)?;
-        let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i32) << 16;
+        let val: u32 = arr[0] as u32 | (arr[1] as u32) << 8 | (arr[2] as u32) << 16;
 
         Ok(val)
     }
