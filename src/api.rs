@@ -9,7 +9,7 @@ pub struct Lps22df<B> {
 
 impl<P: I2c> Lps22df<lps22df_internal::Lps22dfI2C<P>> {
     pub fn new_i2c(i2c: P, address: I2CAddress) -> Self {
-        let bus = lps22df_internal::Lps22dfI2C::new(i2c, address as u8);
+        let bus = lps22df_internal::Lps22dfI2C::new(i2c, address as SevenBitAddress);
         Self { bus }
     }
 }

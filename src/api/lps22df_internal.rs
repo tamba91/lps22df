@@ -337,10 +337,11 @@ impl<B: super::BusOperation> super::Lps22df<B> {
         Ok(val.status_p_da() != 0)
     }
 
-    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i32, Error<B::Error>> {
+    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i16, Error<B::Error>> {
         let mut arr: [u8; 2] = [0; 2];
         self.read_from_register(Reg::TempOutL, &mut arr)?;
-        let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8;
+        let u_raw: u16 = arr[0] as u16 | (arr[1] as u16) << 8;
+        let val: i16 = u_raw as i16;
 
         Ok(val)
     }
