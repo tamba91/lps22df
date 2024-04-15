@@ -84,6 +84,7 @@ impl<B: BusOperation> Lps22df<B> {
 
     pub fn set_odr(&mut self, odr: u32) -> Result<(), Error<B::Error>> {
         let odr: lps22df_internal::CtrlReg1Odr = odr.into();
+        self.ctrl_reg2_set_bdu(true)?;
         self.ctrl_reg1_set_odr(odr)?;
 
         Ok(())
@@ -114,39 +115,40 @@ impl<B: BusOperation> Lps22df<B> {
         Ok(val)
     }
 
-    pub fn get_temp(&mut self) -> Result<f32, Error<B::Error>> {
-        let raw = self.temp_out_l_h_get()?;
-        let val = raw as f32 / 100.0;
+    pub fn one_shot(&mut self) -> Result<(), Error<B::Error>> {
+        if let lps22df_internal::CtrlReg1Odr::PowerDownOneShot = self.ctrl_reg1_get_odr()? {
+            self.ctrl_reg2_set_oneshot()?;
+            while self.ctrl_reg2_get_oneshot()? != false {}
 
-        Ok(val)
+            return Ok(());
+        } else {
+            return Err(Error::ContinuosModeEnabled);
+        }
+    }
+
+    pub fn get_temp(&mut self) -> Result<f32, Error<B::Error>> {
+        let raw_temp = self.temp_out_l_h_get()?;
+        let temp = raw_temp as f32 / 100.0;
+
+        Ok(temp)
     }
 
     pub fn get_press(&mut self) -> Result<f32, Error<B::Error>> {
-        let raw = self.press_out_xl_l_h_get()?;
-        let val = raw as f32 / 4096.0;
+        let raw_press = self.press_out_xl_l_h_get()?;
+        let press = raw_press as f32 / 4096.0;
 
-        Ok(val)
+        Ok(press)
     }
 
-    pub fn get_oneshot(&mut self) -> Result<(f32, f32), Error<B::Error>> {
-        if self.ctrl_reg1_get_odr()? != lps22df_internal::CtrlReg1Odr::PowerDownOneShot {
-            return Err(Error::ContinuosModeEnabled);
-        }
-
-        self.ctrl_reg2_set_oneshot()?;
-
-        while self.ctrl_reg2_get_oneshot()? != false {}
-
-        let raw_press = self.press_out_xl_l_h_get()?;
-        let raw_temp = self.temp_out_l_h_get()?;
-
-        let press = raw_press as f32 / 4096.0;
-        let temp = raw_temp as f32 / 100.0;
+    pub fn get_values(&mut self) -> Result<(f32, f32), Error<B::Error>> {
+        let raw_values = self.press_out_xl_l_h_temp_out_l_h_get()?;
+        let press = raw_values.0 as f32 / 4096.0;
+        let temp = raw_values.1 as f32 / 100.0;
 
         Ok((press, temp))
     }
 
-    pub fn enable_drdy_to_int(&mut self, signal_mode: SignalMode) -> Result<(), Error<B::Error>> {
+    pub fn enable_press_drdy_to_int(&mut self, signal_mode: SignalMode) -> Result<(), Error<B::Error>> {
         match signal_mode {
             SignalMode::Pulsed => self.ctrl_reg4_set_drdy_pulsed(true)?,
             SignalMode::Latched => {
@@ -159,7 +161,7 @@ impl<B: BusOperation> Lps22df<B> {
         Ok(())
     }
 
-    pub fn disable_drdy_to_int(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_press_drdy_to_int(&mut self) -> Result<(), Error<B::Error>> {
         self.ctrl_reg4_set_drdy(false)?;
 
         Ok(())
@@ -202,15 +204,14 @@ impl<B: BusOperation> Lps22df<B> {
     }
 
     pub fn set_fifo_mode(&mut self, mode: FifoMode) -> Result<(), Error<B::Error>> {
-        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
-            self.fifo_ctrl_get_trig_modes_f_mode()?
-        {
+        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo = mode {
             self.fifo_ctrl_set_trig_modes_f_mode(mode)?;
 
             return Ok(());
         }
-
-        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo = mode {
+        if let FifoMode::Bypass | FifoMode::BypassToContinuous | FifoMode::BypassToFifo =
+            self.fifo_ctrl_get_trig_modes_f_mode()?
+        {
             self.fifo_ctrl_set_trig_modes_f_mode(mode)?;
 
             return Ok(());
