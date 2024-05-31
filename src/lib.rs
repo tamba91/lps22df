@@ -564,9 +564,10 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     /// sensor.set_odr(10).unwrap();
     /// sensor.set_avg(512).unwrap();
     /// loop {
-    /// if sensor.is_temp_data_avail().unwrap() == true {
-    ///     let temp: f32 = sensor.get_temp().unwrap();
-    ///     let temp_avail: bool = sensor.is_temp_data_avail().unwrap(); // the available sample has been read, temp_avail is false
+    ///     if sensor.is_temp_data_avail().unwrap() == true {
+    ///         let temp: f32 = sensor.get_temp().unwrap();
+    ///         let temp_avail: bool = sensor.is_temp_data_avail().unwrap(); // the available sample has been read, temp_avail is false
+    ///     }
     /// }
     /// ```  
     ///  
@@ -1475,7 +1476,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///     
     /// # Arguments
     ///
-    /// * buffer: a mutable reference to an array of Option<f32>
+    /// * buffer: a mutable reference to an array of `Option<i32>`
     ///
     /// # Returns
     ///
@@ -1521,7 +1522,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///     
     /// # Arguments
     ///
-    /// * buffer: a mutable reference to an array of Option<i32>
+    /// * buffer: a mutable reference to an array of `Option<i32>`
     ///
     /// # Returns
     ///
