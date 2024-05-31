@@ -104,7 +104,7 @@ pub enum I2CAddress {
 /// `set_press_thr_interrupt_mode`.
 ///
 pub enum SignalMode {
-    /// When used in data ready to pin configuration the INT_DRDY pin is asserted for approximately 5 μs (pulse) when a new pressure 
+    /// When used in data ready to pin configuration the INT_DRDY PIN is asserted for approximately 5 μs (pulse) when a new pressure 
     /// value is available. After this time, the pin clears itself.
     ///
     /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted until 
@@ -127,9 +127,9 @@ pub enum SignalMode {
 /// This enum specify the logic of the INT_DRDY pin
 ///
 pub enum PinLogic {
-    /// The INT_DRDY pin is asserted high
+    /// The INT_DRDY PIN is asserted high
     ActiveHigh,
-    /// The INT_DRDY pin is asserted low
+    /// The INT_DRDY PIN is asserted low
     ActiveLow,
 }
 
@@ -783,7 +783,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     }
 
     ///
-    /// Method that selects the INT_DRDY pin logic.
+    /// Method that selects the INT_DRDY PIN logic.
     ///     
     /// # Arguments
     ///
@@ -814,8 +814,8 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     /// # Returns
     ///
     /// * Result
-    ///     * bool: If true an unread pressure sample is already available when the data ready signal to INT_DRDY pin is enabled.
-    ///             If false no unread pressure sample is available when the data ready signal to INT_DRDY pin is enabled.    
+    ///     * bool: If true an unread pressure sample is already available when the data ready signal to INT_DRDY PIN is enabled.
+    ///             If false no unread pressure sample is available when the data ready signal to INT_DRDY PIN is enabled.    
     ///     * Error: The failure of a bus operation returns Error::Bus(B)
     ///
     /// # Example
@@ -823,8 +823,8 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     /// ```rust
     /// sensor.set_odr(10).unwrap();
     /// sensor.set_avg(512).unwrap();
-    /// sensor.set_pin_logic(PinLogic::ActiveHigh).unwrap();    // INT_DRDY pin asserted high
-    /// sensor.enable_press_drdy_to_pin(SignalMode::Pulsed).unwrap();   // INT_DRDY pin in pulsed mode, pulse width around 5 μs 
+    /// sensor.set_pin_logic(PinLogic::ActiveHigh).unwrap();    // INT_DRDY PIN asserted high
+    /// sensor.enable_press_drdy_to_pin(SignalMode::Pulsed).unwrap();   // INT_DRDY PIN in pulsed mode, pulse width around 5 μs 
     /// ```
     ///   
     pub fn enable_press_drdy_to_pin(
@@ -876,7 +876,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///     * Error: The failure of a bus operation returns Error::Bus(B)
     ///
     /// # Example
-    /// This example shows how to enable a differential pressure event interrupt on the INT_DRDY pin to obtain an interrupt
+    /// This example shows how to enable a differential pressure event interrupt on the INT_DRDY PIN to obtain an interrupt
     /// when the measured pressure falls below the stored reference pressure minus a threshold.
     /// In the example, the current pressure is sampled and stored using the `engage_differential_mode` method.
     /// A pressure threshold of 10.0 hPa is set using the `set_press_threshold` method.
@@ -884,7 +884,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     /// When the pressure falls below the stored pressure value minus the threshold (10.0 hPa), the interrupt is triggered.
     /// 
     /// ```rust
-    /// sensor.set_pin_logic(PinLogic::ActiveLow).unwrap(); // INT_DRDY pin is asserted low
+    /// sensor.set_pin_logic(PinLogic::ActiveLow).unwrap(); // INT_DRDY PIN is asserted low
     /// sensor.set_odr(10).unwrap(); 
     /// sensor.set_avg(512).unwrap(); 
     /// sensor.engage_differential_mode(DifferentialMode::Autorefp).unwrap(); // sampling the current pressure value, Autorefp mode
