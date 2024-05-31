@@ -59,8 +59,8 @@
 //! sensor.set_avg(512).unwrap(); // 512 gives the best resolution
 //! ```
 //! 
-//! Start a pressure and temperature sample measurement with `one_shot` method.
-//! Read the measured pressure and temperature with `get_temp` method.
+//! Start a pressure and temperature sample measurement with the `one_shot` method.
+//! Read the measured pressure and temperature with the `get_temp` method.
 //! ```rust
 //! loop {
 //!     sensor.one_shot().unwrap();
