@@ -124,7 +124,7 @@ pub enum SignalMode {
 }
 
 ///
-/// This enum specify the logic of the INT_DRDY pin
+/// This enum specify the logic of the INT_DRDY PIN
 ///
 pub enum PinLogic {
     /// The INT_DRDY PIN is asserted high
