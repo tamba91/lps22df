@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "This crate provides a platform agnostic driver for the ST LPS22DF temperature sensor."
 readme = "README.md"
-
+license = "BSD 3-Clause License"
 exclude = [
     "target/debug/*"
     ]
