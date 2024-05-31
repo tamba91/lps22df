@@ -1,4 +1,4 @@
-//! This crate provides a platform-agnostic driver for the ST LPS22DF pressure-temperature sensor driver.
+//! This crate provides a platform-agnostic driver for the ST LPS22DF pressure-temperature sensor.
 //! The datasheet and other documentation is available at <https://www.st.com/en/mems-and-sensors/lps22df.html>.
 //! This driver was built using the [embedded-hal](https://docs.rs/embedded-hal/1.0.0/embedded_hal/) traits.
 //! Ensure that the hardware abstraction layer of your microcontroller implements the embedded-hal traits.
