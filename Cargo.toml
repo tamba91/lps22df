@@ -2,9 +2,13 @@
 name = "lps22df"
 version = "0.1.0"
 edition = "2021"
+description = "This crate provides a platform agnostic driver for the ST LPS22DF temperature sensor."
+readme = "README.md"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
+exclude = [
+    "target/debug/*"
+    ]
+keywords = ["st", "mems", "driver", "embedded-hal", "pressure-temperature"]
 [dependencies]
 embedded-hal = "1.0.0"
-bitfield = "0.14.0"
+bitfield = "0.15.0"

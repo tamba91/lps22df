@@ -28,6 +28,7 @@ impl<P: SpiDevice> Lps22dfSPI<P> {
 pub trait BusOperation {
     type Error;
 
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error>;
     fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error>;
     fn write_byte_read_bytes(&mut self, wbuf: &[u8; 1], rbuf: &mut [u8])
         -> Result<(), Self::Error>;
@@ -35,6 +36,13 @@ pub trait BusOperation {
 
 impl<P: I2c> BusOperation for Lps22dfI2C<P> {
     type Error = P::Error;
+
+    #[inline]
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error> {
+        self.i2c.read(self.address, rbuf)?;
+
+        Ok(())
+    }
 
     #[inline]
     fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error> {
@@ -59,6 +67,13 @@ impl<P: SpiDevice> BusOperation for Lps22dfSPI<P> {
     type Error = P::Error;
 
     #[inline]
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error> {
+        self.spi.transaction(&mut [Operation::Read(rbuf)])?;
+
+        Ok(())
+    }
+
+    #[inline]
     fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error> {
         self.spi.transaction(&mut [Operation::Write(wbuf)])?;
 
@@ -79,6 +94,7 @@ impl<P: SpiDevice> BusOperation for Lps22dfSPI<P> {
 }
 
 impl<B: BusOperation> super::Lps22df<B> {
+    #[inline]
     fn read_from_register(&mut self, reg: Reg, buf: &mut [u8]) -> Result<(), Error<B::Error>> {
         self.bus
             .write_byte_read_bytes(&[reg as u8], buf)
@@ -258,7 +274,10 @@ impl<B: BusOperation> super::Lps22df<B> {
         Ok(())
     }
 
-    pub(super) fn ctrl_reg2_set_lfpf_cfg_en_lpfp(&mut self, lfpf_cfg_en_lpfp: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg2_set_lfpf_cfg_en_lpfp(
+        &mut self,
+        lfpf_cfg_en_lpfp: u8,
+    ) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::CtrlReg2, &mut arr)?;
         let mut val = CtrlReg2(arr[0]);
@@ -430,16 +449,6 @@ impl<B: BusOperation> super::Lps22df<B> {
         Ok(())
     }
 
-    pub(super) fn i3c_if_ctrl_add_set_asf_on(&mut self, asf_on: u8) -> Result<(), Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::I3cIfCtrlAdd, &mut arr)?;
-        let mut val = I3cIfCtrlAdd(arr[0]);
-        val.set_i3c_if_ctrl_add_asf_on(asf_on);
-        self.write_to_register(Reg::I3cIfCtrlAdd, val.i3c_if_ctrl_add())?;
-
-        Ok(())
-    }
-
     pub(super) fn int_source_get_boot_on(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::IntSource, &mut arr)?;
@@ -514,7 +523,7 @@ impl<B: BusOperation> super::Lps22df<B> {
     pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Error<B::Error>> {
         let mut arr: [u8; 3] = [0; 3];
         self.read_from_register(Reg::PressOutXl, &mut arr)?;
-        let raw_press: i32 = arr[0] as i32 | (arr[1] as i32 ) << 8 | (arr[2] as i8 as i32) << 16;
+        let raw_press: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i8 as i32) << 16;
 
         Ok(raw_press)
     }
@@ -532,7 +541,7 @@ impl<B: BusOperation> super::Lps22df<B> {
     ) -> Result<(i32, i16), Error<B::Error>> {
         let mut arr: [u8; 5] = [0; 5];
         self.read_from_register(Reg::PressOutXl, &mut arr)?;
-        let raw_press: i32 = arr[0] as i32 | (arr[1] as i32 ) << 8 | (arr[2] as i8 as i32) << 16;
+        let raw_press: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i8 as i32) << 16;
         let raw_temp: i16 = arr[3] as i16 | (arr[4] as i8 as i16) << 8;
 
         Ok((raw_press, raw_temp))
@@ -561,7 +570,6 @@ enum Reg {
     CtrlReg4 = 0x13,
     FifoCtrl = 0x14,
     FifoWtm = 0x15,
-    I3cIfCtrlAdd = 0x19,
     IntSource = 0x24,
     FifoStatus1 = 0x25,
     FifoStatus2 = 0x26,
@@ -789,7 +797,7 @@ pub(super) struct UnexpectedAvgValue;
 
 impl<B> From<UnexpectedAvgValue> for Error<B> {
     fn from(_: UnexpectedAvgValue) -> Self {
-        Error::UnexpectedAvgValue
+        Error::InvalidRegisterValue
     }
 }
 
