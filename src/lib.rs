@@ -100,7 +100,7 @@ pub enum I2CAddress {
 ///
 /// Signal Type for INT_DRDY PIN and interrupt status. This enum is used to specify the behavior for the INT_DRDY PIN,
 /// when the press data-ready signal to pin is enabled through the method `enable_press_drdy_to_pin`, and to specify the behavior
-/// of the interrupt status (and the INT_DRDY PIN, if the pressure interrupt signal to pin is enabled) through the method
+/// of the interrupt status (and the INT_DRDY PIN, if the pressure interrupt event is propagated to INT_DRDY PIN) through the method
 /// `set_press_thr_interrupt_mode`.
 ///
 pub enum SignalMode {
@@ -109,7 +109,7 @@ pub enum SignalMode {
     ///
     /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted until 
     /// the condition that triggered the interrupt remains true, or the method `get_press_int_status` is called.
-    /// This behavior propagates to the INT_DRDY PIN if the differential pressure interrupt signal to pin is enabled through the method
+    /// This behavior propagates to the INT_DRDY PIN if the differential pressure interrupt event to pin is enabled through the method
     /// `enable_press_thr_interrupt_to_pin`.
     ///
     Pulsed,
@@ -118,7 +118,7 @@ pub enum SignalMode {
     ///
     /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted even if 
     /// the condition that triggered the interrupt is no longer true, until the method `get_press_int_status` is called
-    /// This behavior propagates to the INT PIN if the pressure interrupt signal to pin is enabled through the method
+    /// This behavior propagates to the INT_DRDY PIN if the pressure interrupt signal to pin is enabled through the method
     /// `enable_press_thr_interrupt_to_pin`.
     Latched,
 }
@@ -866,22 +866,23 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///     * Error: The failure of a bus operation returns Error::Bus(B).
     ///
     /// # Example
-    /// This example shows how to enable a differential pressure event interrupt on the INT_DRDY PIN to obtain an interrupt
-    /// when the measured pressure falls below the stored reference pressure minus a threshold.
+    /// This example demonstrates how to enable a differential pressure event interrupt and propagate it to the INT_DRDY PIN, 
+    /// generating a signal on the pin when the measured pressure falls below the stored reference pressure minus a threshold.
     /// In the example, the current pressure is sampled and stored using the `engage_differential_mode` method.
     /// A pressure threshold of 10.0 hPa is set using the `set_press_threshold` method.
     /// The pressure low event is enabled using the `enable_press_low_event` method.
-    /// When the pressure falls below the stored pressure value minus the threshold (10.0 hPa), the interrupt is triggered.
+    /// When the measured pressure falls below the stored pressure value minus the threshold 
+    /// (measured_pressure < stored_pressure_reference - threshold), the interrupt is triggered.
     /// 
     /// ```rust
     /// sensor.set_pin_logic(PinLogic::ActiveLow).unwrap(); // INT_DRDY PIN is asserted low
     /// sensor.set_odr(10).unwrap(); 
     /// sensor.set_avg(512).unwrap(); 
-    /// sensor.engage_differential_mode(DifferentialMode::Autorefp).unwrap(); // sampling the current pressure value, Autorefp mode
-    /// sensor.set_press_threshold(10.0).unwrap(); // threshold value for pressure interrupt generation of 10 hPa
-    /// sensor.set_press_thr_interrupt_mode(SignalMode::Pulsed).unwrap(); // differential pressure interrupt signal pulsed
+    /// sensor.engage_differential_mode(DifferentialMode::Autorefp).unwrap(); // sampling and storing the current pressure value (pressure reference), Autorefp mode
+    /// sensor.set_press_threshold(10.0).unwrap(); // threshold value for pressure interrupt generation of 10.0 hPa
+    /// sensor.set_press_thr_interrupt_mode(SignalMode::Pulsed).unwrap(); // differential pressure event interrupt pulsed
     /// sensor.enable_press_low_event().unwrap(); // pressure low event enabled
-    /// sensor.enable_press_thr_interrupt_to_pin().unwrap(); // interrupt signal to INT_DRDY pin
+    /// sensor.enable_press_thr_interrupt_to_pin().unwrap(); // differential pressure event interrupt propagated to INT_DRDY PIN
     /// ```
     /// 
     pub fn enable_press_thr_interrupt_to_pin(&mut self) -> Result<DifferentialPressEvent, Error<B::Error>> {
@@ -892,7 +893,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     }
 
     ///
-    /// Method that disables the pressure interrupt signal on the INT_DRDY pin.
+    /// Method that disables the pressure interrupt signal on the INT_DRDY PIN.
     ///     
     /// # Arguments
     ///
@@ -1239,7 +1240,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     }
 
     ///
-    /// This method sets the FIFO mode .
+    /// This method sets the FIFO mode.
     ///     
     /// # Arguments
     ///
@@ -1249,7 +1250,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///
     /// * Result 
     ///     * ()
-    ///     * Error: If a transition from a non Bypass mode to another non bypass mode is attempted 
+    ///     * Error: If a transition from non Bypass mode to another non Bypass mode is attempted 
     ///              an Error::BypassModeNotEnabled is returned.
     ///              The failure of a bus operation returns Error::Bus(B).
     /// 
@@ -1261,16 +1262,15 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     /// sensor.set_avg(512).unwrap(); 
     /// sensor.set_press_threshold(10.0).unwrap(); // pressure threshold of 10.0 hPa
     /// sensor.engage_differential_mode(DifferentialMode::Autorefp).unwrap(); //sampling and storing the current pressure as reference 
-    /// sensor.set_press_thr_interrupt_mode(SignalMode::Latched).unwrap(); // dfferential pressure interrupt in latched mode
+    /// sensor.set_press_thr_interrupt_mode(SignalMode::Pulsed).unwrap(); // dfferential pressure interrupt in pulsed mode
     /// sensor.set_fifo_watermark(true, 50).unwrap(); // trimming the FIFO to 50 samples max
     /// sensor.enable_fifo_watermark_to_pin().unwrap(); // when watermark threshold is reached INT_DRDY PIN is asserted
     /// sensor.set_fifo_mode(FifoMode::BypassToFifo).unwrap(); // when the interrupt is triggered the FIFO starts storing samples
-    /// sensor.enable_press_low_event().unwrap(); // enable press low event if pressure < (stored_pressure - threshold) the interrupt is triggered
+    /// sensor.enable_press_low_event().unwrap(); // enable press low event, if pressure < (stored_pressure - threshold) the interrupt is triggered
     /// let mut buf: [Option<f32>; 50] = [None; 50]; // buffer array 
     /// /* ...  */ // waiting for the watermark threshold event on INT_DRDY PIN ...
     /// if sensor.is_watermark_full().unwrap() { // checking that the watermark threshold event occurred
     ///     sensor.read_fifo(&mut buf).unwrap(); // reading and (emptying) the FIFO
-    ///     sensor.get_press_int_status().unwrap(); // clearing the differential pressure interrupt
     ///     sensor.set_fifo_mode(FifoMode::Bypass).unwrap(); // resetting the FIFO
     ///     sensor.set_fifo_mode(FifoMode::BypassToFifo).unwrap(); // setting the FIFO in BypassToFifo mode again
     /// }
