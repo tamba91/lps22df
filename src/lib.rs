@@ -65,7 +65,7 @@
 //! loop {
 //!     sensor.one_shot().unwrap();
 //!     let values = sensor.get_values().unwrap();
-//!     writeln!(tx, "press: {}, temp: {}", values.0, values.1).unwrap();
+//!     writeln!(tx, "press: {} hPa, temp: {} °C", values.0, values.1).unwrap();
 //!     delay.delay_ms(5000);
 //!    }
 //! ```
