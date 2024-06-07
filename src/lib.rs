@@ -349,7 +349,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     /// # Returns
     ///
     /// * Result
-    ///     * u8: The sensor identifier number (0xA0).
+    ///     * u8: The sensor identifier number.
     ///     * Error: If a wrong identifier is received (!= 0xB4) an Error::WhoAmIError(u8) is returned.
     ///              The error contains the wrong number received.
     ///              The failure of a bus operation returns Error::Bus(B).
@@ -1466,7 +1466,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///     
     /// # Arguments
     ///
-    /// * buffer: a mutable reference to an array of `Option<i32>`.
+    /// * buffer: a mutable reference to an array of `Option<f32>`.
     ///
     /// # Returns
     ///
