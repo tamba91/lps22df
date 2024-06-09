@@ -47,8 +47,10 @@
 //! ```rust
 //! use embedded_hal_bus::spi::RefCellDevice;
 //! use lps22df::Lps22df;
-//! let spi = RefCellDevice::new_no_delay(&spi, cs).unwrap(); // cs is the chip select pin
-//! let mut sensor = Lps22df::new_spi(spi).unwrap();
+//! 
+//! let spi_bus = RefCell::new(spi);    // spi is the SPI instance provided by the microcontroller HAL that must implement the SpiBus trait of embedded-hal
+//! let spi_device = RefCellDevice::new_no_delay(&spi_bus, cs).unwrap();    // cs is the chip select pin
+//! let mut sensor = Lps22df::new_spi(spi_device).unwrap();
 //! sensor.disable_i2c_interface().unwrap(); // when using spi, the I2C interface can be disabled
 //! ```
 //! 
