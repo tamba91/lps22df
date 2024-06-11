@@ -868,6 +868,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///     * Error: The failure of a bus operation returns Error::Bus(B).
     ///
     /// # Example
+    /// 
     /// This example demonstrates how to enable a differential pressure event interrupt and propagate it to the INT_DRDY PIN, 
     /// generating a signal on the pin when the measured pressure falls below the stored reference pressure minus a threshold.
     /// In the example, the current pressure is sampled and stored using the `engage_differential_mode` method.
@@ -1257,7 +1258,9 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///              The failure of a bus operation returns Error::Bus(B).
     /// 
     /// # Example
+    /// 
     /// In this example the FIFO is configured to start collecting data when a low pressure interrupt event is triggered.
+    /// 
     /// ```rust
     /// sensor.set_pin_logic(PinLogic::ActiveLow).unwrap(); // INT_DRDY PIN asserted low
     /// sensor.set_odr(10).unwrap();
@@ -1311,14 +1314,17 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///              The failure of a bus operation returns Error::Bus(B).
     ///
     /// # Example 1
+    /// 
     /// In this example the FIFO size is trimmed to the watermark level (50 samples). The method `is_watermark_full`
     /// will return true when 50 samples are stored in the FIFO and the FIFO will stop storing data.
+    /// 
     /// ```rust
     /// sensor.set_fifo_watermark(true, 50).unwrap();
     /// sensor.set_fifo_mode(FifoMode::FIFOMode).unwrap();
     /// ```
     /// 
     /// # Example 2
+    /// 
     /// In this example the FIFO size is not trimmed to the watermark level (120 samples). The method `is_watermark_full`
     /// will return true when 120 samples are stored in the FIFO but the FIFO will keep storing data up to 128 samples.
     /// ```rust
@@ -1327,7 +1333,9 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     /// ```
     ///
     /// # Example 3
+    /// 
     /// In this example the watermark level is disabled
+    /// 
     /// ```rust
     /// sensor.set_fifo_watermark(false, 0).unwrap();
     /// ```
@@ -1478,6 +1486,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///              The failure of a bus operation returns Error::Bus(B).
     /// 
     /// # Example
+    /// 
     /// ```rust
     /// let mut buf: [Option<f32>; 128] = [None; 128]; // buffer array, slightly larger than watermark level, FIFO size
     /// sensor.set_fifo_watermark(false, 125).unwrap(); // enabling watermark event when FIFO reaches 125 samples (FIFO size not reduced)
