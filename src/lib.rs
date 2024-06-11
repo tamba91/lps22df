@@ -192,11 +192,11 @@ pub enum FifoMode {
 ///
 #[repr(u8)]
 pub enum Lpf1Conf {
-    //LPF1 Filter disabled
+    // LPF1 Filter disabled
     OdrDiv2Lpf0Only = 0b00,
-    //LPF1 Filter configuration ODR/4
+    // LPF1 Filter configuration ODR/4
     OdrDiv4 = 0b10,
-    //LPF1 Filter configuration ODR/9
+    // LPF1 Filter configuration ODR/9
     OdrDiv9 = 0b11,
 }
 
@@ -779,7 +779,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///     
     /// # Arguments
     ///
-    /// * pin_logic: a PinLogic enum variant.
+    /// * pin_logic: a PinLogic enum variant. See the PinLogic enum documentation.
     ///
     /// # Returns
     ///
@@ -797,7 +797,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     }
     
     ///
-    /// Method that enables the data ready signal on the INT_DRDY pin.
+    /// Method that enables the data ready signal on the INT_DRDY PIN.
     ///     
     /// # Arguments
     ///
@@ -834,7 +834,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     }
 
     ///
-    /// Method that disables the data ready signal on the INT_DRDY pin.
+    /// Method that disables the data ready signal on the INT_DRDY PIN.
     ///     
     /// # Arguments
     ///
@@ -854,7 +854,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     }
 
     ///
-    /// Method that enables the pressure interrupt signal on the INT_DRDY pin.
+    /// Method that enables the pressure interrupt signal on the INT_DRDY PIN.
     ///     
     /// # Arguments
     ///
@@ -1101,7 +1101,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     /// # Returns
     ///
     /// * Result
-    ///     * DifferentialPressEvent: The current differentail pressure interrupt status; see DifferentialPressEvent enum documentation.    
+    ///     * DifferentialPressEvent: The current differential pressure interrupt status; see DifferentialPressEvent enum documentation.    
     ///     * Error: The failure of a bus operation returns Error::Bus(B).
     ///
     pub fn get_press_int_status(&mut self) -> Result<DifferentialPressEvent, Error<B::Error>> {
