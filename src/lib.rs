@@ -110,7 +110,7 @@ pub enum SignalMode {
     /// value is available. After this time, the pin clears itself.
     ///
     /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted until 
-    /// the condition that triggered the interrupt remains true, or the method `get_press_int_status` is called.
+    /// the conditions that triggered the interrupt remain true.
     /// This behavior propagates to the INT_DRDY PIN if the differential pressure interrupt event to pin is enabled through the method
     /// `enable_press_thr_interrupt_to_pin`.
     ///
@@ -118,8 +118,9 @@ pub enum SignalMode {
     /// When used in data ready to pin configuration the pin remains asserted until the new pressure value is read 
     /// with the method `get_press` or `get_press_raw` or `get_values` or `get_values_raw`.
     ///
-    /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted even if 
-    /// the condition that triggered the interrupt is no longer true, until the method `get_press_int_status` is called
+    /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted
+    /// until the method `get_press_event_status` is called (even if the conditions that triggered the interrupt are no longer true).
+    /// If the conditions that triggered the interrupt are still true, the interrupt will be reasserted at the next pressure sampling.
     /// This behavior propagates to the INT_DRDY PIN if the pressure interrupt signal to pin is enabled through the method
     /// `enable_press_thr_interrupt_to_pin`.
     Latched,
@@ -151,7 +152,7 @@ pub enum DifferentialMode {
 }
 
 ///
-/// A variant of this enum is returned by the method `get_press_int_status`.
+/// A variant of this enum is returned by the method `get_press_event_status`.
 ///
 pub enum DifferentialPressEvent {
     /// No pressure interrupt occurred.
@@ -161,7 +162,7 @@ pub enum DifferentialPressEvent {
     /// A pressure high interrupt occurred (the measured pressure is higher than the threshold pressure).
     PressureHigh,
     /// A pressure low interrupt and a pressure high interrupt occurred.
-    /// (the measuered pressure rised above the threshold and felt below the threshold before the method `get_press_int_status` was called)
+    /// (the measuered pressure rised above the threshold and felt below the threshold before the method `get_press_event_status` was called)
     BothInterrupt,
 }
 
@@ -1104,7 +1105,7 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
     ///     * DifferentialPressEvent: The current differential pressure interrupt status; see DifferentialPressEvent enum documentation.    
     ///     * Error: The failure of a bus operation returns Error::Bus(B).
     ///
-    pub fn get_press_int_status(&mut self) -> Result<DifferentialPressEvent, Error<B::Error>> {
+    pub fn get_press_event_status(&mut self) -> Result<DifferentialPressEvent, Error<B::Error>> {
         let val = self.int_source_get_pl_ph()?;
 
         Ok(val.into())
