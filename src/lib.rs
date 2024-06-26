@@ -85,7 +85,7 @@ mod lps22df_reg;
 ///
 /// The LPS22DF driver struct.
 ///
-pub struct Lps22df<B: BusOperation> {
+pub struct Lps22df<B> {
     bus: B,
 }
 
