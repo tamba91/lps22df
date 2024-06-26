@@ -25,16 +25,7 @@ impl<P: SpiDevice> Lps22dfSPI<P> {
     }
 }
 
-pub trait BusOperation {
-    type Error;
-
-    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error>;
-    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error>;
-    fn write_byte_read_bytes(&mut self, wbuf: &[u8; 1], rbuf: &mut [u8])
-        -> Result<(), Self::Error>;
-}
-
-impl<P: I2c> BusOperation for Lps22dfI2C<P> {
+impl<P: I2c> super::BusOperation for Lps22dfI2C<P> {
     type Error = P::Error;
 
     #[inline]
@@ -63,7 +54,7 @@ impl<P: I2c> BusOperation for Lps22dfI2C<P> {
     }
 }
 
-impl<P: SpiDevice> BusOperation for Lps22dfSPI<P> {
+impl<P: SpiDevice> super::BusOperation for Lps22dfSPI<P> {
     type Error = P::Error;
 
     #[inline]
@@ -93,7 +84,7 @@ impl<P: SpiDevice> BusOperation for Lps22dfSPI<P> {
     }
 }
 
-impl<B: BusOperation> super::Lps22df<B> {
+impl<B: super::BusOperation> super::Lps22df<B> {
     #[inline]
     fn read_from_register(&mut self, reg: Reg, buf: &mut [u8]) -> Result<(), Error<B::Error>> {
         self.bus

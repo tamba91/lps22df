@@ -85,8 +85,20 @@ mod lps22df_reg;
 ///
 /// The LPS22DF driver struct.
 ///
-pub struct Lps22df<B: lps22df_reg::BusOperation> {
+pub struct Lps22df<B: BusOperation> {
     bus: B,
+}
+
+///
+/// The BusOperation trait.
+///
+pub trait BusOperation {
+    type Error;
+
+    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error>;
+    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error>;
+    fn write_byte_read_bytes(&mut self, wbuf: &[u8; 1], rbuf: &mut [u8])
+        -> Result<(), Self::Error>;
 }
 
 ///
@@ -302,46 +314,9 @@ where
         Ok(instance)
     }
 
-    ///
-    /// Method that disables the I2C interface. It's avaialable only when the sensor is connected through SPI bus.
-    ///     
-    /// # Arguments
-    ///
-    /// * None
-    ///
-    /// # Returns
-    ///
-    /// * Result
-    ///     * ()
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
-    ///
-    pub fn disable_i2c_interface(&mut self) -> Result<(), Error<P::Error>> {
-        self.if_ctrl_set_i2c_i3c_dis(true as u8)?;
-
-        Ok(())
-    }
-
-    ///
-    /// Method that enables the I2C interface. It's avaialable only when the sensor is connected through SPI bus.
-    ///     
-    /// # Arguments
-    ///
-    /// * None
-    ///
-    /// # Returns
-    ///
-    /// * Result
-    ///     * ()
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
-    ///
-    pub fn enable_i2c_interface(&mut self) -> Result<(), Error<P::Error>> {
-        self.if_ctrl_set_i2c_i3c_dis(false as u8)?;
-
-        Ok(())
-    }
 }
 
-impl<B: lps22df_reg::BusOperation> Lps22df<B> {
+impl<B: BusOperation> Lps22df<B> {
     ///
     /// Method that returns the sensor identifier (0xB4).
     ///     
@@ -372,6 +347,44 @@ impl<B: lps22df_reg::BusOperation> Lps22df<B> {
         }
 
         Ok(res)
+    }
+
+    ///
+    /// Method that disables the I2C interface.
+    ///     
+    /// # Arguments
+    ///
+    /// * None
+    ///
+    /// # Returns
+    ///
+    /// * Result
+    ///     * ()
+    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///
+    pub fn disable_i2c_interface(&mut self) -> Result<(), Error<B::Error>> {
+        self.if_ctrl_set_i2c_i3c_dis(true as u8)?;
+
+        Ok(())
+    }
+
+    ///
+    /// Method that enables the I2C interface.
+    ///     
+    /// # Arguments
+    ///
+    /// * None
+    ///
+    /// # Returns
+    ///
+    /// * Result
+    ///     * ()
+    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///
+    pub fn enable_i2c_interface(&mut self) -> Result<(), Error<B::Error>> {
+        self.if_ctrl_set_i2c_i3c_dis(false as u8)?;
+
+        Ok(())
     }
 
     ///
