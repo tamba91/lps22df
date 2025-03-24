@@ -7,7 +7,7 @@
 //!
 //! Create an instance of the driver with the `new_i2c` or `new_spi` associated function, by passing i2c and address instances
 //! or an spi (SpiDevice) instance.
-//! 
+//!
 //! ### I2C:
 //!
 //!```rust
@@ -15,7 +15,7 @@
 //!-
 //! let mut sensor = Lps22df::new_i2c(i2c, I2CAddress::Address1).unwrap();
 //! ```
-//! 
+//!
 //! i2c instance must implement the I2c trait of embedded-hal. The address is an enum variant of I2CAddress enum.
 //! There are two addresses available: 0x5C and 0x5D, which correspond to enum variants Address0 and Address1.
 //! Check the datasheet for I2C address configuration.
@@ -31,12 +31,12 @@
 //!
 //! let i2c_bus = RefCell::new(i2c);
 //!```
-//! and then create an instance of i2c for each sensor connected. 
+//! and then create an instance of i2c for each sensor connected.
 //!```rust
 //! let mut lps22df = Lps22df::new_i2c(i2c::RefCellDevice::new(&i2c_bus), Lps22dfAddress::Address1).unwrap();
 //! let mut stts22h = Stts22h::new_i2c(i2c::RefCellDevice::new(&i2c_bus), Stts22hAddress::Address0).unwrap();
 //!```
-//! 
+//!
 //! In this example sharing is implemented with a RefCell, so it only allows sharing within a single thread.
 //! If you need to share a bus across several threads, use CriticalSectionDevice instead.
 //!
@@ -47,20 +47,20 @@
 //! ```rust
 //! use embedded_hal_bus::spi::RefCellDevice;
 //! use lps22df::Lps22df;
-//! 
+//!
 //! let spi_bus = RefCell::new(spi);    // spi is the SPI instance provided by the microcontroller HAL that must implement the SpiBus trait of embedded-hal
 //! let spi_device = RefCellDevice::new_no_delay(&spi_bus, cs).unwrap();    // cs is the chip select pin
 //! let mut sensor = Lps22df::new_spi(spi_device).unwrap();
 //! sensor.disable_i2c_interface().unwrap(); // when using spi, the I2C interface can be disabled
 //! ```
-//! 
+//!
 //! ## Setting ODR and AVG:
 //! Set the output data rate and the resolution with the `set_odr` and the `set_avg` methods.
 //! ```rust
 //! sensor.set_odr(0).unwrap(); // by passing '0' we put the sensor in power-down/one-shot mode
 //! sensor.set_avg(512).unwrap(); // 512 gives the best resolution
 //! ```
-//! 
+//!
 //! Start a pressure and temperature sample measurement with the `one_shot` method.
 //! Read the measured pressure and temperature with the `get_temp` method.
 //! ```rust
@@ -71,7 +71,7 @@
 //!     delay.delay_ms(5000);
 //!    }
 //! ```
-//! 
+//!
 //! the values are then printed on a generic uart interface
 //!
 
@@ -79,26 +79,25 @@
 
 use embedded_hal::i2c::{I2c, SevenBitAddress};
 use embedded_hal::spi::SpiDevice;
+use generic_bus::BusOperation;
 
 mod lps22df_reg;
 
 ///
 /// The LPS22DF driver struct.
 ///
-pub struct Lps22df<B> {
-    bus: B,
+pub struct Lps22df<I> {
+    interface: I,
+    read_mask: lps22df_reg::ReadMask,
 }
 
-///
-/// The BusOperation trait.
-///
-pub trait BusOperation {
-    type Error;
+pub struct Lps22dfI2C<P> {
+    i2c: P,
+    address: SevenBitAddress,
+}
 
-    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error>;
-    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error>;
-    fn write_byte_read_bytes(&mut self, wbuf: &[u8; 1], rbuf: &mut [u8])
-        -> Result<(), Self::Error>;
+pub struct Lps22dfSPI<P> {
+    spi: P,
 }
 
 ///
@@ -118,16 +117,16 @@ pub enum I2CAddress {
 /// `set_press_thr_interrupt_mode`.
 ///
 pub enum SignalMode {
-    /// When used in data ready to pin configuration the INT_DRDY PIN is asserted for approximately 5 μs (pulse) when a new pressure 
+    /// When used in data ready to pin configuration the INT_DRDY PIN is asserted for approximately 5 μs (pulse) when a new pressure
     /// value is available. After this time, the pin clears itself.
     ///
-    /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted until 
+    /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted until
     /// the conditions that triggered the interrupt remain true.
     /// This behavior propagates to the INT_DRDY PIN if the differential pressure interrupt event to pin is enabled through the method
     /// `enable_press_thr_interrupt_to_pin`.
     ///
     Pulsed,
-    /// When used in data ready to pin configuration the pin remains asserted until the new pressure value is read 
+    /// When used in data ready to pin configuration the pin remains asserted until the new pressure value is read
     /// with the method `get_press` or `get_press_raw` or `get_values` or `get_values_raw`.
     ///
     /// When used in differential pressure interrupt configuration the differential pressure interrupt remains asserted
@@ -187,16 +186,16 @@ pub enum FifoMode {
     /// The FIFO is not operational and it remains empty, switching to bypass mode is also used to reset the FIFO.
     /// Passing through bypass mode is mandatory when switching between different FIFO buffer operating modes.
     Bypass = 0b000,
-    /// In FIFOMode pressure data are stored in the FIFO until it is full. When the FIFO is full in order to restart the FIFO the
-    /// FIFO must be set in FifoMode::Bypass and then in FifoMode::FIFOMode again.
-    FIFOMode = 0b001,
+    /// In Fifo mode pressure data are stored in the FIFO until it is full. When the FIFO is full in order to restart the FIFO the
+    /// FIFO must be set in FifoMode::Bypass and then in FifoMode::Fifo again.
+    Fifo = 0b001,
     /// In Continuous mode when the FIFO is full the oldest samples are overwritten when new pressure samples are produced.
     Continuous = 0b010,
-    /// The FIFO is in Bypass mode and switches to FIFOMode when a pressure interrupt event occurs.
+    /// The FIFO is in Bypass mode and switches to Fifo mode when a pressure interrupt event occurs.
     BypassToFifo = 0b101,
     /// The FIFO is in Bypass mode and switches to Continuous when a pressure interrupt event occurs.
     BypassToContinuous = 0b110,
-    /// The FIFO is in Continuous mode and switches to FIFOMode when a pressure interrupt event occurs.
+    /// The FIFO is in Continuous mode and switches to Fifo mode when a pressure interrupt event occurs.
     ContinuousToFifo = 0b111,
 }
 
@@ -217,11 +216,11 @@ pub enum Lpf1Conf {
 /// Driver errors.
 ///
 #[derive(Copy, Clone, Debug)]
-pub enum Error<B> {
+pub enum Error<I> {
     /// An error occurred at the bus level. Any methods that access the I2C/SPI bus to interact with the sensor may return this error
     /// if the bus operation fails.
-    /// The generic type B represents the specific error generated by the HAL of the microcontroller in use.
-    Bus(B),
+    /// The generic type I represents the specific error generated by the HAL of the microcontroller in use.
+    Bus(I),
     /// The attempt to write to a register failed,
     /// resulting in a discrepancy between the intended value and the actual value stored in the register.
     WriteFailure,
@@ -242,10 +241,7 @@ pub enum Error<B> {
     InvalidWatermarkLevel,
 }
 
-impl<P> Lps22df<lps22df_reg::Lps22dfI2C<P>>
-where
-    P: I2c,
-{
+impl<P: I2c> Lps22df<Lps22dfI2C<P>> {
     ///
     /// Constructor method (associated function) for using the I2C bus. This method checks for the presence of the sensor on the bus
     /// and returns a new driver instance if the sensor responds with the correct identifier.
@@ -261,28 +257,21 @@ where
     ///     * Self: The sensor driver instance.
     ///     * Error: If a wrong identifier is received (!= 0xB4) an Error::WhoAmIError(u8) is returned.
     ///              The error contains the wrong number received.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
     pub fn new_i2c(i2c: P, address: I2CAddress) -> Result<Self, Error<P::Error>> {
-        let bus = lps22df_reg::Lps22dfI2C::new(i2c, address as SevenBitAddress);
-        let mut instance = Self { bus };
-        let who = instance.who_am_i_get()?;
-        if who != 0xB4 {
-            return Err(Error::WhoAmIError(who));
-        }
-        instance.ctrl_reg2_set_boot()?;
-        while instance.int_source_get_boot_on()? != 0 {}
-        instance.ctrl_reg2_set_swreset()?;
-        while instance.ctrl_reg2_get_swreset()? != 0 {}
+        let mut instance = Self {
+            interface: Lps22dfI2C::new(i2c, address as SevenBitAddress),
+            read_mask: lps22df_reg::ReadMask::I2c,
+        };
+        instance.who_am_i()?;
+        instance.reset()?;
 
         Ok(instance)
     }
 }
 
-impl<P> Lps22df<lps22df_reg::Lps22dfSPI<P>>
-where
-    P: SpiDevice,
-{
+impl<P: SpiDevice> Lps22df<Lps22dfSPI<P>> {
     ///
     /// Constructor method (associated function) for using the SPI bus. This method checks for the presence of the sensor on the bus
     /// and returns a new driver instance if the sensor responds with the correct identifier.
@@ -297,26 +286,21 @@ where
     ///     * Self: The sensor driver instance.
     ///     * Error: If a wrong identifier is received (!= 0xB4) an Error::WhoAmIError(u8) is returned.
     ///              The error contains the wrong number received.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
     pub fn new_spi(spi: P) -> Result<Self, Error<P::Error>> {
-        let bus = lps22df_reg::Lps22dfSPI::new(spi);
-        let mut instance = Self { bus };
-        let who = instance.who_am_i_get()?;
-        if who != 0xB4 {
-            return Err(Error::WhoAmIError(who));
-        }
-        instance.ctrl_reg2_set_boot()?;
-        while instance.int_source_get_boot_on()? != 0 {}
-        instance.ctrl_reg2_set_swreset()?;
-        while instance.ctrl_reg2_get_swreset()? != 0 {}
+        let mut instance = Self {
+            interface: Lps22dfSPI::new(spi),
+            read_mask: lps22df_reg::ReadMask::Spi,
+        };
+        instance.who_am_i()?;
+        instance.reset()?;
 
         Ok(instance)
     }
-
 }
 
-impl<B: BusOperation> Lps22df<B> {
+impl<I: BusOperation> Lps22df<I> {
     ///
     /// Method that returns the sensor identifier (0xB4).
     ///     
@@ -330,7 +314,7 @@ impl<B: BusOperation> Lps22df<B> {
     ///     * u8: The sensor identifier number.
     ///     * Error: If a wrong identifier is received (!= 0xB4) an Error::WhoAmIError(u8) is returned.
     ///              The error contains the wrong number received.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example
     ///
@@ -338,8 +322,8 @@ impl<B: BusOperation> Lps22df<B> {
     ///  let who = sensor.who_am_i().unwrap();
     ///  writeln!(tx, "who am i: {}", who).unwrap();
     /// ```
-    /// 
-    pub fn who_am_i(&mut self) -> Result<u8, Error<B::Error>> {
+    ///
+    pub fn who_am_i(&mut self) -> Result<u8, Error<I::Error>> {
         let res = self.who_am_i_get()?;
 
         if res != 0xB4 {
@@ -360,9 +344,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_i2c_interface(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_i2c_interface(&mut self) -> Result<(), Error<I::Error>> {
         self.if_ctrl_set_i2c_i3c_dis(true as u8)?;
 
         Ok(())
@@ -379,9 +363,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn enable_i2c_interface(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn enable_i2c_interface(&mut self) -> Result<(), Error<I::Error>> {
         self.if_ctrl_set_i2c_i3c_dis(false as u8)?;
 
         Ok(())
@@ -398,9 +382,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * u32: The sensor current ODR (output data rate). If 0 is returned the sensor is in power-down/one-shot mode.
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///              
-    pub fn get_odr(&mut self) -> Result<u32, Error<B::Error>> {
+    pub fn get_odr(&mut self) -> Result<u32, Error<I::Error>> {
         let odr: lps22df_reg::CtrlReg1Odr = self.ctrl_reg1_get_odr()?.into();
 
         Ok(odr.into())
@@ -414,7 +398,7 @@ impl<B: BusOperation> Lps22df<B> {
     /// * odr: an u32 unsigned integer number representing the desired odr.
     ///        The available ODRs are:
     ///        0: sets the sensor in power-down/one-shot mode (see the `one_shot` method documentation), 1Hz 4Hz, 10Hz, 25Hz,
-    ///        50Hz, 75Hz (max avg in continuous mode: 128), 100Hz (max avg in continuous mode: 64), 
+    ///        50Hz, 75Hz (max avg in continuous mode: 128), 100Hz (max avg in continuous mode: 64),
     ///        200Hz (max avg in continuous mode: 32).
     ///                           
     /// # Note
@@ -427,7 +411,7 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example 1
     ///   
@@ -449,8 +433,8 @@ impl<B: BusOperation> Lps22df<B> {
     /// sensor.set_odr(0).unwrap(); // the sensor is put in power-down/one-shot mode
     /// let current_odr = sensor.get_odr().unwrap(); // current_odr is 0
     /// ```
-    /// 
-    pub fn set_odr(&mut self, odr: u32) -> Result<(), Error<B::Error>> {
+    ///
+    pub fn set_odr(&mut self, odr: u32) -> Result<(), Error<I::Error>> {
         let odr: lps22df_reg::CtrlReg1Odr = odr.into();
         self.ctrl_reg2_set_bdu(false as u8)?;
         self.ctrl_reg1_set_odr(odr as u8)?;
@@ -469,9 +453,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * u32: The sensor current AVG (resolution).
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///              
-    pub fn get_avg(&mut self) -> Result<u32, Error<B::Error>> {
+    pub fn get_avg(&mut self) -> Result<u32, Error<I::Error>> {
         let avg: lps22df_reg::CtrlReg1Avg = self.ctrl_reg1_get_avg()?.try_into()?;
 
         Ok(avg.into())
@@ -496,7 +480,7 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example 1
     ///   
@@ -511,8 +495,8 @@ impl<B: BusOperation> Lps22df<B> {
     /// sensor.set_avg(30).unwrap(); // 30 is not a value in the list, the avg is set at 32 averages
     /// let current_avg = sensor.get_avg().unwrap(); // current_avg is 32
     /// ```
-    /// 
-    pub fn set_avg(&mut self, avg: u32) -> Result<(), Error<B::Error>> {
+    ///
+    pub fn set_avg(&mut self, avg: u32) -> Result<(), Error<I::Error>> {
         let avg: lps22df_reg::CtrlReg1Avg = avg.into();
         self.ctrl_reg1_set_avg(avg as u8)?;
 
@@ -530,7 +514,7 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * bool: if true an unread pressure sample is available, if false no unread pressure sample is available.
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example
     ///   
@@ -545,7 +529,7 @@ impl<B: BusOperation> Lps22df<B> {
     /// }
     /// ```  
     ///            
-    pub fn is_press_data_avail(&mut self) -> Result<bool, Error<B::Error>> {
+    pub fn is_press_data_avail(&mut self) -> Result<bool, Error<I::Error>> {
         let val = self.status_get_p_da()?;
 
         Ok(val != 0)
@@ -562,7 +546,7 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * bool: if true an unread temperature sample is available, if false no unread temperature sample is available.
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example
     ///   
@@ -577,7 +561,7 @@ impl<B: BusOperation> Lps22df<B> {
     /// }
     /// ```  
     ///  
-    pub fn is_temp_data_avail(&mut self) -> Result<bool, Error<B::Error>> {
+    pub fn is_temp_data_avail(&mut self) -> Result<bool, Error<I::Error>> {
         let val = self.status_get_t_da()?;
 
         Ok(val != 0)
@@ -597,8 +581,8 @@ impl<B: BusOperation> Lps22df<B> {
     /// * Result
     ///     * ()          
     ///     * Error: If the sensor is not in one-shot mode an Error::PowerDownOneShotModeNotEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
-    /// 
+    ///              The failure of a bus operation returns Error::Bus(I).
+    ///
     /// * AVG/ODR max values in one-shot mode:
     ///        * avg 512: max odr 25 Hz
     ///        * avg 128: max odr 75 Hz
@@ -607,10 +591,10 @@ impl<B: BusOperation> Lps22df<B> {
     ///        * avg 16: max odr: 300 Hz
     ///        * avg 8: max odr: 400 Hz
     ///        * avg 4: max odr: 500 Hz  
-    /// 
+    ///
     /// # Note:
     ///   In one-shot mode, the ODR (output data rate) corresponds to the frequency at which the `one_shot` method is called.
-    /// 
+    ///
     /// # Example
     ///   
     /// ```rust
@@ -621,9 +605,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///     let press: f32 = sensor.get_press().unwrap();
     ///     delay.delay_ms(5000);
     /// }
-    /// ``` 
+    /// ```
     ///     
-    pub fn one_shot(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn one_shot(&mut self) -> Result<(), Error<I::Error>> {
         if let lps22df_reg::CtrlReg1Odr::PowerDownOneShot = self.ctrl_reg1_get_odr()?.into() {
             self.press_out_h_get()?;
             self.ctrl_reg2_set_oneshot()?;
@@ -646,9 +630,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * f32: temperature in °C. The value is expressed as 32-bit floating point.           
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///  
-    pub fn get_temp(&mut self) -> Result<f32, Error<B::Error>> {
+    pub fn get_temp(&mut self) -> Result<f32, Error<I::Error>> {
         let raw_temp = self.temp_out_l_h_get()?;
         let temp = raw_temp as f32 / TEMP_SENSITIVITY;
 
@@ -669,9 +653,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///     * i16: raw temperature. The value is expressed as two’s complement 16-bit integer.
     ///            To obtain the real temperature in °C divide by 100.0 (or the TEMP_SENSITIVITY const),
     ///            e.g. 2500 is 25.00 °C, -1000 is -10.00 °C.
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///   
-    pub fn get_temp_raw(&mut self) -> Result<i16, Error<B::Error>> {
+    pub fn get_temp_raw(&mut self) -> Result<i16, Error<I::Error>> {
         let raw_temp = self.temp_out_l_h_get()?;
 
         Ok(raw_temp)
@@ -688,9 +672,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * f32: pressure in hPa. The value is expressed as 32-bit floating point.           
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///    
-    pub fn get_press(&mut self) -> Result<f32, Error<B::Error>> {
+    pub fn get_press(&mut self) -> Result<f32, Error<I::Error>> {
         let raw_press = self.press_out_xl_l_h_get()?;
         let press = raw_press as f32 / PRESS_SENSITIVITY;
 
@@ -711,9 +695,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///     * i32: raw pressure. The value is expressed as two’s complement 32-bit integer.
     ///            To obtain the real pressure in hPa divide by 4096.0 (or the PRESS_SENSITIVITY const).
     ///            e.g. 4191629 is 1023.3 hPa.
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
-    /// 
-    pub fn get_press_raw(&mut self) -> Result<i32, Error<B::Error>> {
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
+    ///
+    pub fn get_press_raw(&mut self) -> Result<i32, Error<I::Error>> {
         let raw_press = self.press_out_xl_l_h_get()?;
 
         Ok(raw_press)
@@ -730,10 +714,10 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * (f32, f32): a tuple containing pressure and temperaure. The values are expressed as 32-bit floating point.           
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example
-    /// 
+    ///
     /// ```rust
     /// sensor.set_odr(0).unwrap();
     /// sensor.set_avg(512).unwrap();
@@ -746,7 +730,7 @@ impl<B: BusOperation> Lps22df<B> {
     /// }
     /// ```
     ///   
-    pub fn get_values(&mut self) -> Result<(f32, f32), Error<B::Error>> {
+    pub fn get_values(&mut self) -> Result<(f32, f32), Error<I::Error>> {
         let raw_values = self.press_out_xl_l_h_temp_out_l_h_get()?;
         let press = raw_values.0 as f32 / PRESS_SENSITIVITY;
         let temp = raw_values.1 as f32 / TEMP_SENSITIVITY;
@@ -766,10 +750,10 @@ impl<B: BusOperation> Lps22df<B> {
     /// * Result
     ///     * (i32, i16): a tuple containing raw pressure and raw temperaure. The values expressed as 32-bit 16-bit signed integers;
     ///       see the methods `get_press_raw` and `get_temp_raw`.          
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example
-    /// 
+    ///
     /// ```rust
     /// sensor.set_odr(0).unwrap();
     /// sensor.set_avg(512).unwrap();
@@ -782,7 +766,7 @@ impl<B: BusOperation> Lps22df<B> {
     /// }
     /// ```
     ///
-    pub fn get_values_raw(&mut self) -> Result<(i32, i16), Error<B::Error>> {
+    pub fn get_values_raw(&mut self) -> Result<(i32, i16), Error<I::Error>> {
         let raw_values = self.press_out_xl_l_h_temp_out_l_h_get()?;
 
         Ok(raw_values)
@@ -799,9 +783,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()         
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn set_pin_logic(&mut self, pin_logic: PinLogic) -> Result<(), Error<B::Error>> {
+    pub fn set_pin_logic(&mut self, pin_logic: PinLogic) -> Result<(), Error<I::Error>> {
         match pin_logic {
             PinLogic::ActiveHigh => self.ctrl_reg3_set_int_h_l(false as u8)?,
             PinLogic::ActiveLow => self.ctrl_reg3_set_int_h_l(true as u8)?,
@@ -809,7 +793,7 @@ impl<B: BusOperation> Lps22df<B> {
 
         Ok(())
     }
-    
+
     ///
     /// Method that enables the data ready signal on the INT_DRDY PIN.
     ///     
@@ -822,21 +806,21 @@ impl<B: BusOperation> Lps22df<B> {
     /// * Result
     ///     * bool: If true an unread pressure sample is already available when the data ready signal to INT_DRDY PIN is enabled.
     ///             If false no unread pressure sample is available when the data ready signal to INT_DRDY PIN is enabled.    
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example
-    /// 
+    ///
     /// ```rust
     /// sensor.set_odr(10).unwrap();
     /// sensor.set_avg(512).unwrap();
     /// sensor.set_pin_logic(PinLogic::ActiveHigh).unwrap();    // INT_DRDY PIN asserted high
-    /// sensor.enable_press_drdy_to_pin(SignalMode::Pulsed).unwrap();   // INT_DRDY PIN in pulsed mode, pulse width around 5 μs 
+    /// sensor.enable_press_drdy_to_pin(SignalMode::Pulsed).unwrap();   // INT_DRDY PIN in pulsed mode, pulse width around 5 μs
     /// ```
     ///   
     pub fn enable_press_drdy_to_pin(
         &mut self,
         signal_mode: SignalMode,
-    ) -> Result<bool, Error<B::Error>> {
+    ) -> Result<bool, Error<I::Error>> {
         let val = self.press_out_h_get()?;
         match signal_mode {
             SignalMode::Pulsed => self.ctrl_reg4_set_drdy_pulsed(true as u8)?,
@@ -858,9 +842,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()     
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_press_drdy_to_pin(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_press_drdy_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         self.ctrl_reg4_set_drdy(false as u8)?;
         self.ctrl_reg4_set_drdy_pulsed(false as u8)?;
 
@@ -878,31 +862,33 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * DifferentialPressEvent: enum variant the represents the differential pressure event interrupt status
-    ///       when the method is called. 
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///       when the method is called.
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example
-    /// 
-    /// This example demonstrates how to enable a differential pressure event interrupt and propagate it to the INT_DRDY PIN, 
+    ///
+    /// This example demonstrates how to enable a differential pressure event interrupt and propagate it to the INT_DRDY PIN,
     /// generating a signal on the pin when the measured pressure falls below the stored reference pressure minus a threshold.
     /// In the example, the current pressure is sampled and stored using the `engage_differential_mode` method.
     /// A pressure threshold of 10.0 hPa is set using the `set_press_threshold` method.
     /// The pressure low event is enabled using the `enable_press_low_event` method.
-    /// When the measured pressure falls below the stored pressure value minus the threshold 
+    /// When the measured pressure falls below the stored pressure value minus the threshold
     /// (measured_pressure < stored_pressure_reference - threshold), the interrupt is triggered.
-    /// 
+    ///
     /// ```rust
     /// sensor.set_pin_logic(PinLogic::ActiveLow).unwrap(); // INT_DRDY PIN is asserted low
-    /// sensor.set_odr(10).unwrap(); 
-    /// sensor.set_avg(512).unwrap(); 
+    /// sensor.set_odr(10).unwrap();
+    /// sensor.set_avg(512).unwrap();
     /// sensor.engage_differential_mode(DifferentialMode::Autorefp).unwrap(); // sampling and storing the current pressure value (pressure reference), Autorefp mode
     /// sensor.set_press_threshold(10.0).unwrap(); // threshold value for pressure interrupt generation of 10.0 hPa
     /// sensor.set_press_thr_interrupt_mode(SignalMode::Pulsed).unwrap(); // differential pressure event interrupt pulsed
     /// sensor.enable_press_low_event().unwrap(); // pressure low event enabled
     /// sensor.enable_press_thr_interrupt_to_pin().unwrap(); // differential pressure event interrupt propagated to INT_DRDY PIN
     /// ```
-    /// 
-    pub fn enable_press_thr_interrupt_to_pin(&mut self) -> Result<DifferentialPressEvent, Error<B::Error>> {
+    ///
+    pub fn enable_press_thr_interrupt_to_pin(
+        &mut self,
+    ) -> Result<DifferentialPressEvent, Error<I::Error>> {
         let val = self.int_source_get_pl_ph()?;
         self.ctrl_reg4_set_int_en(true as u8)?;
 
@@ -920,9 +906,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_press_thr_interrupt_to_pin(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_press_thr_interrupt_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         self.ctrl_reg4_set_int_en(false as u8)?;
 
         Ok(())
@@ -939,12 +925,12 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     pub fn set_press_thr_interrupt_mode(
         &mut self,
         signal_mode: SignalMode,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         match signal_mode {
             SignalMode::Pulsed => self.interrupt_cfg_set_lir(false as u8)?,
             SignalMode::Latched => self.interrupt_cfg_set_lir(true as u8)?,
@@ -964,9 +950,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn enable_press_low_event(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn enable_press_low_event(&mut self) -> Result<(), Error<I::Error>> {
         self.interrupt_cfg_set_ple(true as u8)?;
 
         Ok(())
@@ -983,9 +969,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_press_low_event(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_press_low_event(&mut self) -> Result<(), Error<I::Error>> {
         self.interrupt_cfg_set_ple(false as u8)?;
 
         Ok(())
@@ -1002,9 +988,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn enable_press_high_event(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn enable_press_high_event(&mut self) -> Result<(), Error<I::Error>> {
         self.interrupt_cfg_set_phe(true as u8)?;
 
         Ok(())
@@ -1021,9 +1007,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_press_high_event(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_press_high_event(&mut self) -> Result<(), Error<I::Error>> {
         self.interrupt_cfg_set_phe(false as u8)?;
 
         Ok(())
@@ -1041,12 +1027,12 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
     pub fn engage_differential_mode(
         &mut self,
         differential_mode: DifferentialMode,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         match differential_mode {
             DifferentialMode::Autozero => {
                 self.interrupt_cfg_set_reset_arp()?;
@@ -1062,7 +1048,7 @@ impl<B: BusOperation> Lps22df<B> {
     }
 
     ///
-    /// This method disengages the differential mode, deleting the stored pressure value. 
+    /// This method disengages the differential mode, deleting the stored pressure value.
     /// If Autozero mode was enabled, it is disabled.
     ///     
     /// # Arguments
@@ -1073,9 +1059,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disengage_differential_mode(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disengage_differential_mode(&mut self) -> Result<(), Error<I::Error>> {
         self.interrupt_cfg_set_reset_arp()?;
         self.interrupt_cfg_set_reset_az()?;
 
@@ -1094,9 +1080,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()   
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn set_press_threshold(&mut self, h_pa: f32) -> Result<(), Error<B::Error>> {
+    pub fn set_press_threshold(&mut self, h_pa: f32) -> Result<(), Error<I::Error>> {
         let abs_h_pa: f32 = f32::from_bits(h_pa.to_bits() & (i32::MAX as u32));
         let threshold: [u8; 2] = ((abs_h_pa * 16.0) as u16).to_le_bytes();
         self.ths_p_l_set(threshold[0])?;
@@ -1116,9 +1102,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * DifferentialPressEvent: The current differential pressure interrupt status; see DifferentialPressEvent enum documentation.    
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn get_press_event_status(&mut self) -> Result<DifferentialPressEvent, Error<B::Error>> {
+    pub fn get_press_event_status(&mut self) -> Result<DifferentialPressEvent, Error<I::Error>> {
         let val = self.int_source_get_pl_ph()?;
 
         Ok(val.into())
@@ -1135,9 +1121,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result    
     ///     * Error: If the FIFO is not in bypass mode Error::BypassModeNotEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn enable_fifo_full_to_pin(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn enable_fifo_full_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_full(true as u8)?;
             return Ok(());
@@ -1157,9 +1143,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result    
     ///     * Error: If the FIFO is not in bypass mode Error::BypassModeNotEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_fifo_full_to_pin(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_fifo_full_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_full(false as u8)?;
             return Ok(());
@@ -1179,9 +1165,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result    
     ///     * Error: If the FIFO is not in bypass mode Error::BypassModeNotEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn enable_fifo_watermark_to_pin(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn enable_fifo_watermark_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_wtm(true as u8)?;
             return Ok(());
@@ -1201,9 +1187,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result    
     ///     * Error: If the FIFO is not in bypass mode Error::BypassModeNotEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_fifo_watermark_to_pin(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_fifo_watermark_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_wtm(false as u8)?;
             return Ok(());
@@ -1223,9 +1209,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result    
     ///     * Error: If the FIFO is not in bypass mode Error::BypassModeNotEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn enable_fifo_overrun_to_pin(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn enable_fifo_overrun_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_ovr(true as u8)?;
             return Ok(());
@@ -1245,9 +1231,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result    
     ///     * Error: If the FIFO is not in bypass mode Error::BypassModeNotEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_fifo_overrun_to_pin(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_fifo_overrun_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_ovr(false as u8)?;
             return Ok(());
@@ -1262,31 +1248,31 @@ impl<B: BusOperation> Lps22df<B> {
     /// # Arguments
     ///
     /// * mode: a FifoMode enum variant; see the FifoMode enum documentation.
-    /// 
+    ///
     /// # Returns
     ///
-    /// * Result 
+    /// * Result
     ///     * ()
-    ///     * Error: If a transition from non Bypass mode to another non Bypass mode is attempted 
+    ///     * Error: If a transition from non Bypass mode to another non Bypass mode is attempted
     ///              an Error::BypassModeNotEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
-    /// 
+    ///              The failure of a bus operation returns Error::Bus(I).
+    ///
     /// # Example
-    /// 
+    ///
     /// In this example the FIFO is configured to start collecting data when a low pressure interrupt event is triggered.
-    /// 
+    ///
     /// ```rust
     /// sensor.set_pin_logic(PinLogic::ActiveLow).unwrap(); // INT_DRDY PIN asserted low
     /// sensor.set_odr(10).unwrap();
-    /// sensor.set_avg(512).unwrap(); 
+    /// sensor.set_avg(512).unwrap();
     /// sensor.set_press_threshold(10.0).unwrap(); // pressure threshold of 10.0 hPa
-    /// sensor.engage_differential_mode(DifferentialMode::Autorefp).unwrap(); //sampling and storing the current pressure as reference 
+    /// sensor.engage_differential_mode(DifferentialMode::Autorefp).unwrap(); //sampling and storing the current pressure as reference
     /// sensor.set_press_thr_interrupt_mode(SignalMode::Pulsed).unwrap(); // dfferential pressure interrupt in pulsed mode
     /// sensor.set_fifo_watermark(true, 50).unwrap(); // trimming the FIFO to 50 samples max
     /// sensor.enable_fifo_watermark_to_pin().unwrap(); // when watermark threshold is reached INT_DRDY PIN is asserted
     /// sensor.set_fifo_mode(FifoMode::BypassToFifo).unwrap(); // when the interrupt is triggered the FIFO starts storing samples
     /// sensor.enable_press_low_event().unwrap(); // enable press low event, if pressure < (stored_pressure - threshold) the interrupt is triggered
-    /// let mut buf: [Option<f32>; 50] = [None; 50]; // buffer array 
+    /// let mut buf: [Option<f32>; 50] = [None; 50]; // buffer array
     /// /* ...  */ // waiting for the watermark threshold event on INT_DRDY PIN ...
     /// if sensor.is_watermark_full().unwrap() { // checking that the watermark threshold event occurred
     ///     sensor.read_fifo(&mut buf).unwrap(); // reading and (emptying) the FIFO
@@ -1294,8 +1280,8 @@ impl<B: BusOperation> Lps22df<B> {
     ///     sensor.set_fifo_mode(FifoMode::BypassToFifo).unwrap(); // setting the FIFO in BypassToFifo mode again
     /// }
     /// ```
-    /// 
-    pub fn set_fifo_mode(&mut self, mode: FifoMode) -> Result<(), Error<B::Error>> {
+    ///
+    pub fn set_fifo_mode(&mut self, mode: FifoMode) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = mode {
             self.fifo_ctrl_set_trig_modes_f_mode(mode as u8)?;
 
@@ -1319,37 +1305,37 @@ impl<B: BusOperation> Lps22df<B> {
     ///                                  is kept at 128 samples.
     /// * watermark_level: number of samples for the watermark level threshold. If 0 and enable_size_fifo_to_watermark is false
     ///                    the watermark threshold is disabled, if 0 and enable_size_fifo_to_watermark is true an error is returned.
-    /// 
+    ///
     /// # Returns
     ///
-    /// * Result 
+    /// * Result
     ///     * ()
     ///     * Error: An invalid watermark configuration returns Err(Error::InvalidWatermarkLevel).
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
     /// # Example 1
-    /// 
+    ///
     /// In this example the FIFO size is trimmed to the watermark level (50 samples). The method `is_watermark_full`
     /// will return true when 50 samples are stored in the FIFO and the FIFO will stop storing data.
-    /// 
+    ///
     /// ```rust
     /// sensor.set_fifo_watermark(true, 50).unwrap();
-    /// sensor.set_fifo_mode(FifoMode::FIFOMode).unwrap();
+    /// sensor.set_fifo_mode(FifoMode::Fifo).unwrap();
     /// ```
-    /// 
+    ///
     /// # Example 2
-    /// 
+    ///
     /// In this example the FIFO size is not trimmed to the watermark level (120 samples). The method `is_watermark_full`
     /// will return true when 120 samples are stored in the FIFO but the FIFO will keep storing data up to 128 samples.
     /// ```rust
     /// sensor.set_fifo_watermark(false, 120).unwrap();
-    /// sensor.set_fifo_mode(FifoMode::FIFOMode).unwrap();
+    /// sensor.set_fifo_mode(FifoMode::Fifo).unwrap();
     /// ```
     ///
     /// # Example 3
-    /// 
+    ///
     /// In this example the watermark level is disabled
-    /// 
+    ///
     /// ```rust
     /// sensor.set_fifo_watermark(false, 0).unwrap();
     /// ```
@@ -1358,7 +1344,7 @@ impl<B: BusOperation> Lps22df<B> {
         &mut self,
         enable_size_fifo_to_watermark: bool,
         watermark_level: u8,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             match enable_size_fifo_to_watermark {
                 true => match watermark_level {
@@ -1398,12 +1384,12 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// # Returns
     ///
-    /// * Result 
+    /// * Result
     ///     * u32: the number of unread data samples stored in the FIFO
     ///     * Error: If the FIFO is in Bypass mode an Error::BypassModeEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn get_fifo_data_length(&mut self) -> Result<u32, Error<B::Error>> {
+    pub fn get_fifo_data_length(&mut self) -> Result<u32, Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             return Err(Error::BypassModeEnabled);
         }
@@ -1421,12 +1407,12 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// # Returns
     ///
-    /// * Result 
+    /// * Result
     ///     * bool: If true the number of unread data samples stored in the FIFO is equal or greater than the watermark threshold.
     ///     * Error: If the FIFO is in Bypass mode an Error::BypassModeEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn is_watermark_full(&mut self) -> Result<bool, Error<B::Error>> {
+    pub fn is_watermark_full(&mut self) -> Result<bool, Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             return Err(Error::BypassModeEnabled);
         }
@@ -1444,12 +1430,12 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// # Returns
     ///
-    /// * Result 
-    ///     * bool: If true the fifo is full
+    /// * Result
+    ///     * bool: If true the FIFO is full
     ///     * Error: If the FIFO is in Bypass mode an Error::BypassModeEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn is_fifo_full(&mut self) -> Result<bool, Error<B::Error>> {
+    pub fn is_fifo_full(&mut self) -> Result<bool, Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             return Err(Error::BypassModeEnabled);
         }
@@ -1470,12 +1456,12 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// # Returns
     ///
-    /// * Result 
+    /// * Result
     ///     * bool: If true at least one data sample in FIFO has been overwritten
     ///     * Error: If the FIFO is in Bypass mode an Error::BypassModeEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn is_fifo_overrun(&mut self) -> Result<bool, Error<B::Error>> {
+    pub fn is_fifo_overrun(&mut self) -> Result<bool, Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             return Err(Error::BypassModeEnabled);
         }
@@ -1494,13 +1480,13 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// # Returns
     ///
-    /// * Result 
+    /// * Result
     ///     * ()
     ///     * Error: If the FIFO is in bypass mode Error::BypassModeEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
-    /// 
+    ///              The failure of a bus operation returns Error::Bus(I).
+    ///
     /// # Example
-    /// 
+    ///
     /// ```rust
     /// let mut buf: [Option<f32>; 128] = [None; 128]; // buffer array, slightly larger than watermark level, FIFO size
     /// sensor.set_fifo_watermark(false, 125).unwrap(); // enabling watermark event when FIFO reaches 125 samples (FIFO size not reduced)
@@ -1510,9 +1496,9 @@ impl<B: BusOperation> Lps22df<B> {
     /// if sensor.is_watermark_full().unwrap() {    // checking that the watermark threshold event occurred
     ///     sensor.read_fifo(&mut buf).unwrap(); // reading and (emptying) the FIFO
     /// }
-    /// ``` 
+    /// ```
     ///             
-    pub fn read_fifo(&mut self, buffer: &mut [Option<f32>]) -> Result<(), Error<B::Error>> {
+    pub fn read_fifo(&mut self, buffer: &mut [Option<f32>]) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             return Err(Error::BypassModeEnabled);
         }
@@ -1532,7 +1518,7 @@ impl<B: BusOperation> Lps22df<B> {
     }
 
     ///
-    /// This method reads (as raw data) the data samples stored in the FIFO into the provided buffer array. 
+    /// This method reads (as raw data) the data samples stored in the FIFO into the provided buffer array.
     /// If the array is larger than the current number of samples stored in the FIFO, the extra elements will be filled with `None`.
     ///     
     /// # Arguments
@@ -1541,12 +1527,12 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// # Returns
     ///
-    /// * Result 
+    /// * Result
     ///     * ()
     ///     * Error: If the FIFO is in bypass mode Error::BypassModeEnabled is returned.
-    ///              The failure of a bus operation returns Error::Bus(B).
+    ///              The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn read_fifo_raw(&mut self, buffer: &mut [Option<i32>]) -> Result<(), Error<B::Error>> {
+    pub fn read_fifo_raw(&mut self, buffer: &mut [Option<i32>]) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             return Err(Error::BypassModeEnabled);
         }
@@ -1576,9 +1562,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()    
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn enable_lpf1_filter(&mut self, lpf1_conf: Lpf1Conf) -> Result<(), Error<B::Error>> {
+    pub fn enable_lpf1_filter(&mut self, lpf1_conf: Lpf1Conf) -> Result<(), Error<I::Error>> {
         self.ctrl_reg2_set_lfpf_cfg_en_lpfp(lpf1_conf as u8)?;
 
         Ok(())
@@ -1595,9 +1581,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()    
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn disable_lpf1_filter(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn disable_lpf1_filter(&mut self) -> Result<(), Error<I::Error>> {
         self.ctrl_reg2_set_lfpf_cfg_en_lpfp(Lpf1Conf::OdrDiv2Lpf0Only as u8)?;
 
         Ok(())
@@ -1614,9 +1600,9 @@ impl<B: BusOperation> Lps22df<B> {
     ///
     /// * Result
     ///     * ()    
-    ///     * Error: The failure of a bus operation returns Error::Bus(B).
+    ///     * Error: The failure of a bus operation returns Error::Bus(I).
     ///
-    pub fn reset(&mut self) -> Result<(), Error<B::Error>> {
+    pub fn reset(&mut self) -> Result<(), Error<I::Error>> {
         self.ctrl_reg2_set_boot()?;
         while self.int_source_get_boot_on()? != 0 {}
         self.ctrl_reg2_set_swreset()?;
@@ -1628,7 +1614,7 @@ impl<B: BusOperation> Lps22df<B> {
 
 /// The constant 4096.0 serves as the divisor when converting a two's complement integer number which represents a raw pressure
 /// to obtain the pressure in hPa as a float.
-const PRESS_SENSITIVITY: f32 = 4096.0;
+pub const PRESS_SENSITIVITY: f32 = 4096.0;
 /// The constant 100.0 serves as the divisor when converting a two's complement integer number which represents a raw temperature
 /// to obtain the temperature in Celsius as a float.
-const TEMP_SENSITIVITY: f32 = 100.0;
+pub const TEMP_SENSITIVITY: f32 = 100.0;

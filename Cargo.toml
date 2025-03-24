@@ -12,3 +12,4 @@ keywords = ["st", "mems", "driver", "embedded-hal", "pressure-temperature"]
 [dependencies]
 embedded-hal = "1.0.0"
 bitfield = "0.15.0"
+generic-bus = {git = "https://gitlab.di.unimi.it/andrea.tambani/generic-bus"}

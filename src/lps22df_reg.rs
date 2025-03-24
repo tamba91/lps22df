@@ -1,106 +1,93 @@
 use bitfield::bitfield;
 use embedded_hal::i2c::{I2c, SevenBitAddress};
 use embedded_hal::spi::{Operation, SpiDevice};
+use generic_bus::BusOperation;
 
 use super::Error;
 
-pub struct Lps22dfI2C<P> {
-    i2c: P,
-    address: SevenBitAddress,
+#[derive(Clone, Copy)]
+#[repr(u8)]  
+pub(super) enum ReadMask {
+    I2c = 0x00,
+    Spi = 0x80,
 }
 
-impl<P: I2c> Lps22dfI2C<P> {
+impl<P: I2c> super::Lps22dfI2C<P> {
     pub(super) fn new(i2c: P, address: SevenBitAddress) -> Self {
         Self { i2c, address }
     }
 }
 
-pub struct Lps22dfSPI<P> {
-    spi: P,
-}
-
-impl<P: SpiDevice> Lps22dfSPI<P> {
+impl<P: SpiDevice> super::Lps22dfSPI<P> {
     pub(super) fn new(spi: P) -> Self {
         Self { spi }
     }
 }
 
-impl<P: I2c> super::BusOperation for Lps22dfI2C<P> {
+impl<P: I2c> BusOperation for super::Lps22dfI2C<P> {
     type Error = P::Error;
 
     #[inline]
-    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error> {
+    fn read(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error> {
         self.i2c.read(self.address, rbuf)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error> {
+    fn write(&mut self, wbuf: &[u8]) -> Result<(), Self::Error> {
         self.i2c.write(self.address, wbuf)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_byte_read_bytes(
-        &mut self,
-        wbuf: &[u8; 1],
-        rbuf: &mut [u8],
-    ) -> Result<(), Self::Error> {
+    fn write_read(&mut self, wbuf: &[u8], rbuf: &mut [u8]) -> Result<(), Self::Error> {
         self.i2c.write_read(self.address, wbuf, rbuf)?;
 
         Ok(())
     }
 }
 
-impl<P: SpiDevice> super::BusOperation for Lps22dfSPI<P> {
+impl<P: SpiDevice> BusOperation for super::Lps22dfSPI<P> {
     type Error = P::Error;
 
     #[inline]
-    fn read_bytes(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error> {
-        self.spi.transaction(&mut [Operation::Read(rbuf)])?;
+    fn read(&mut self, rbuf: &mut [u8]) -> Result<(), Self::Error> {
+        self.spi.read(rbuf)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_bytes(&mut self, wbuf: &[u8]) -> Result<(), Self::Error> {
-        self.spi.transaction(&mut [Operation::Write(wbuf)])?;
+    fn write(&mut self, wbuf: &[u8]) -> Result<(), Self::Error> {
+        self.spi.write(wbuf)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_byte_read_bytes(
-        &mut self,
-        wbuf: &[u8; 1],
-        rbuf: &mut [u8],
-    ) -> Result<(), Self::Error> {
+    fn write_read(&mut self, wbuf: &[u8], rbuf: &mut [u8]) -> Result<(), Self::Error> {
         self.spi
-            .transaction(&mut [Operation::Write(&[wbuf[0] | 0x80]), Operation::Read(rbuf)])?;
+            .transaction(&mut [Operation::Write(wbuf), Operation::Read(rbuf)])?;
 
         Ok(())
     }
 }
 
-impl<B: super::BusOperation> super::Lps22df<B> {
+impl<I: BusOperation> super::Lps22df<I> {
     #[inline]
-    fn read_from_register(&mut self, reg: Reg, buf: &mut [u8]) -> Result<(), Error<B::Error>> {
-        self.bus
-            .write_byte_read_bytes(&[reg as u8], buf)
-            .map_err(Error::Bus)?;
+    fn read_reg(&mut self, reg: Reg, buf: &mut [u8]) -> Result<(), Error<I::Error>> {
+        self.interface.write_read(&[reg as u8 | self.read_mask as u8], buf).map_err(Error::Bus)?;
 
         Ok(())
     }
 
     #[inline]
-    fn write_to_register(&mut self, reg: Reg, val: u8) -> Result<(), Error<B::Error>> {
-        self.bus
-            .write_bytes(&[reg as u8, val])
-            .map_err(Error::Bus)?;
+    fn write_reg(&mut self, reg: Reg, val: u8) -> Result<(), Error<I::Error>> {
+        self.interface.write(&[reg as u8, val]).map_err(Error::Bus)?;
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(reg, &mut arr)?;
+        self.read_reg(reg, &mut arr)?;
         if arr[0] != val {
             return Err(Error::WriteFailure);
         }
@@ -109,92 +96,90 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     }
 
     #[inline]
-    fn write_to_register_no_check(&mut self, reg: Reg, val: u8) -> Result<(), Error<B::Error>> {
-        self.bus
-            .write_bytes(&[reg as u8, val])
-            .map_err(Error::Bus)?;
+    fn write_reg_no_chk(&mut self, reg: Reg, val: u8) -> Result<(), Error<I::Error>> {
+        self.interface.write(&[reg as u8, val]).map_err(Error::Bus)?;
 
         Ok(())
     }
 
-    pub(super) fn interrupt_cfg_set_autorefp(&mut self) -> Result<(), Error<B::Error>> {
+    pub(super) fn interrupt_cfg_set_autorefp(&mut self) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::InterruptCfg, &mut arr)?;
+        self.read_reg(Reg::InterruptCfg, &mut arr)?;
         let mut val = InterruptCfg(arr[0]);
         val.set_interrupt_cfg_autorefp(1);
-        self.write_to_register_no_check(Reg::InterruptCfg, val.interrupt_cfg())?;
+        self.write_reg_no_chk(Reg::InterruptCfg, val.interrupt_cfg())?;
 
         Ok(())
     }
 
-    pub(super) fn interrupt_cfg_set_reset_arp(&mut self) -> Result<(), Error<B::Error>> {
+    pub(super) fn interrupt_cfg_set_reset_arp(&mut self) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::InterruptCfg, &mut arr)?;
+        self.read_reg(Reg::InterruptCfg, &mut arr)?;
         let mut val = InterruptCfg(arr[0]);
         val.set_interrupt_cfg_reset_arp(1);
-        self.write_to_register_no_check(Reg::InterruptCfg, val.interrupt_cfg())?;
+        self.write_reg_no_chk(Reg::InterruptCfg, val.interrupt_cfg())?;
 
         Ok(())
     }
 
-    pub(super) fn interrupt_cfg_set_autozero(&mut self) -> Result<(), Error<B::Error>> {
+    pub(super) fn interrupt_cfg_set_autozero(&mut self) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::InterruptCfg, &mut arr)?;
+        self.read_reg(Reg::InterruptCfg, &mut arr)?;
         let mut val = InterruptCfg(arr[0]);
         val.set_interrupt_cfg_autozero(1);
-        self.write_to_register_no_check(Reg::InterruptCfg, val.interrupt_cfg())?;
+        self.write_reg_no_chk(Reg::InterruptCfg, val.interrupt_cfg())?;
 
         Ok(())
     }
 
-    pub(super) fn interrupt_cfg_set_reset_az(&mut self) -> Result<(), Error<B::Error>> {
+    pub(super) fn interrupt_cfg_set_reset_az(&mut self) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::InterruptCfg, &mut arr)?;
+        self.read_reg(Reg::InterruptCfg, &mut arr)?;
         let mut val = InterruptCfg(arr[0]);
         val.set_interrupt_cfg_reset_az(1);
-        self.write_to_register_no_check(Reg::InterruptCfg, val.interrupt_cfg())?;
+        self.write_reg_no_chk(Reg::InterruptCfg, val.interrupt_cfg())?;
 
         Ok(())
     }
 
-    pub(super) fn interrupt_cfg_set_lir(&mut self, lir: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn interrupt_cfg_set_lir(&mut self, lir: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::InterruptCfg, &mut arr)?;
+        self.read_reg(Reg::InterruptCfg, &mut arr)?;
         let mut val = InterruptCfg(arr[0]);
         val.set_interrupt_cfg_lir(lir);
-        self.write_to_register_no_check(Reg::InterruptCfg, val.interrupt_cfg())?;
+        self.write_reg_no_chk(Reg::InterruptCfg, val.interrupt_cfg())?;
 
         Ok(())
     }
 
-    pub(super) fn interrupt_cfg_set_ple(&mut self, ple: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn interrupt_cfg_set_ple(&mut self, ple: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::InterruptCfg, &mut arr)?;
+        self.read_reg(Reg::InterruptCfg, &mut arr)?;
         let mut val = InterruptCfg(arr[0]);
         val.set_interrupt_cfg_ple(ple);
-        self.write_to_register_no_check(Reg::InterruptCfg, val.interrupt_cfg())?;
+        self.write_reg_no_chk(Reg::InterruptCfg, val.interrupt_cfg())?;
 
         Ok(())
     }
 
-    pub(super) fn interrupt_cfg_set_phe(&mut self, phe: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn interrupt_cfg_set_phe(&mut self, phe: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::InterruptCfg, &mut arr)?;
+        self.read_reg(Reg::InterruptCfg, &mut arr)?;
         let mut val = InterruptCfg(arr[0]);
         val.set_interrupt_cfg_phe(phe);
-        self.write_to_register_no_check(Reg::InterruptCfg, val.interrupt_cfg())?;
+        self.write_reg_no_chk(Reg::InterruptCfg, val.interrupt_cfg())?;
 
         Ok(())
     }
 
-    pub(super) fn ths_p_l_set(&mut self, ths_p_l: u8) -> Result<(), Error<B::Error>> {
-        self.write_to_register(Reg::ThsPL, ths_p_l)?;
+    pub(super) fn ths_p_l_set(&mut self, ths_p_l: u8) -> Result<(), Error<I::Error>> {
+        self.write_reg(Reg::ThsPL, ths_p_l)?;
 
         Ok(())
     }
 
-    pub(super) fn ths_p_h_set(&mut self, ths_p_h: u8) -> Result<(), Error<B::Error>> {
-        self.write_to_register(Reg::ThsPH, ths_p_h)?;
+    pub(super) fn ths_p_h_set(&mut self, ths_p_h: u8) -> Result<(), Error<I::Error>> {
+        self.write_reg(Reg::ThsPH, ths_p_h)?;
 
         Ok(())
     }
@@ -202,65 +187,65 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn if_ctrl_set_i2c_i3c_dis(
         &mut self,
         i2c_i3c_dis: u8,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::IfCtrl, &mut arr)?;
+        self.read_reg(Reg::IfCtrl, &mut arr)?;
         let mut val = IfCtrl(arr[0]);
         val.set_if_ctrl_i2c_i3c_dis(i2c_i3c_dis);
-        self.write_to_register(Reg::IfCtrl, val.if_ctrl())?;
+        self.write_reg(Reg::IfCtrl, val.if_ctrl())?;
 
         Ok(())
     }
 
-    pub(super) fn who_am_i_get(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn who_am_i_get(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::WhoAmI, &mut arr)?;
+        self.read_reg(Reg::WhoAmI, &mut arr)?;
 
         Ok(arr[0])
     }
 
-    pub(super) fn ctrl_reg1_get_odr(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn ctrl_reg1_get_odr(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg1, &mut arr)?;
+        self.read_reg(Reg::CtrlReg1, &mut arr)?;
         let val: u8 = CtrlReg1(arr[0]).ctrl_reg1_odr();
 
         Ok(val)
     }
 
-    pub(super) fn ctrl_reg1_set_odr(&mut self, odr: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg1_set_odr(&mut self, odr: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg1, &mut arr)?;
+        self.read_reg(Reg::CtrlReg1, &mut arr)?;
         let mut val = CtrlReg1(arr[0]);
         val.set_ctrl_reg1_odr(odr);
-        self.write_to_register(Reg::CtrlReg1, val.ctrl_reg1())?;
+        self.write_reg(Reg::CtrlReg1, val.ctrl_reg1())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg1_get_avg(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn ctrl_reg1_get_avg(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg1, &mut arr)?;
+        self.read_reg(Reg::CtrlReg1, &mut arr)?;
         let val: u8 = CtrlReg1(arr[0]).ctrl_reg1_avg();
 
         Ok(val)
     }
 
-    pub(super) fn ctrl_reg1_set_avg(&mut self, avg: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg1_set_avg(&mut self, avg: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg1, &mut arr)?;
+        self.read_reg(Reg::CtrlReg1, &mut arr)?;
         let mut val = CtrlReg1(arr[0]);
         val.set_ctrl_reg1_avg(avg);
-        self.write_to_register(Reg::CtrlReg1, val.ctrl_reg1())?;
+        self.write_reg(Reg::CtrlReg1, val.ctrl_reg1())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg2_set_boot(&mut self) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg2_set_boot(&mut self) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg2, &mut arr)?;
+        self.read_reg(Reg::CtrlReg2, &mut arr)?;
         let mut val = CtrlReg2(arr[0]);
         val.set_ctrl_reg2_boot(1);
-        self.write_to_register(Reg::CtrlReg2, val.ctrl_reg2())?;
+        self.write_reg(Reg::CtrlReg2, val.ctrl_reg2())?;
 
         Ok(())
     }
@@ -268,60 +253,60 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn ctrl_reg2_set_lfpf_cfg_en_lpfp(
         &mut self,
         lfpf_cfg_en_lpfp: u8,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg2, &mut arr)?;
+        self.read_reg(Reg::CtrlReg2, &mut arr)?;
         let mut val = CtrlReg2(arr[0]);
         val.set_ctrl_reg2_lfpf_cfg_en_lpfp(lfpf_cfg_en_lpfp);
-        self.write_to_register(Reg::CtrlReg2, val.ctrl_reg2())?;
+        self.write_reg(Reg::CtrlReg2, val.ctrl_reg2())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg2_set_bdu(&mut self, bdu: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg2_set_bdu(&mut self, bdu: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg2, &mut arr)?;
+        self.read_reg(Reg::CtrlReg2, &mut arr)?;
         let mut val = CtrlReg2(arr[0]);
         val.set_ctrl_reg2_bdu(bdu);
-        self.write_to_register(Reg::CtrlReg2, val.ctrl_reg2())?;
+        self.write_reg(Reg::CtrlReg2, val.ctrl_reg2())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg2_get_swreset(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn ctrl_reg2_get_swreset(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg2, &mut arr)?;
+        self.read_reg(Reg::CtrlReg2, &mut arr)?;
         let val: u8 = CtrlReg2(arr[0]).ctrl_reg2_swreset();
 
         Ok(val)
     }
 
-    pub(super) fn ctrl_reg2_set_swreset(&mut self) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg2_set_swreset(&mut self) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg2, &mut arr)?;
+        self.read_reg(Reg::CtrlReg2, &mut arr)?;
         let mut val = CtrlReg2(arr[0]);
         val.set_ctrl_reg2_swreset(1);
-        self.write_to_register_no_check(Reg::CtrlReg2, val.ctrl_reg2())?;
+        self.write_reg_no_chk(Reg::CtrlReg2, val.ctrl_reg2())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg2_set_oneshot(&mut self) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg2_set_oneshot(&mut self) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg2, &mut arr)?;
+        self.read_reg(Reg::CtrlReg2, &mut arr)?;
         let mut val = CtrlReg2(arr[0]);
         val.set_ctrl_reg2_oneshot(1);
-        self.write_to_register_no_check(Reg::CtrlReg2, val.ctrl_reg2())?;
+        self.write_reg_no_chk(Reg::CtrlReg2, val.ctrl_reg2())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg3_set_int_h_l(&mut self, int_h_l: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg3_set_int_h_l(&mut self, int_h_l: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg3, &mut arr)?;
+        self.read_reg(Reg::CtrlReg3, &mut arr)?;
         let mut val = CtrlReg3(arr[0]);
         val.set_ctrl_reg3_int_h_l(int_h_l);
-        self.write_to_register(Reg::CtrlReg3, val.ctrl_reg3())?;
+        self.write_reg(Reg::CtrlReg3, val.ctrl_reg3())?;
 
         Ok(())
     }
@@ -329,32 +314,32 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn ctrl_reg4_set_drdy_pulsed(
         &mut self,
         drdy_pulsed: u8,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg4, &mut arr)?;
+        self.read_reg(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
         val.set_ctrl_reg4_drdy_pls(drdy_pulsed);
-        self.write_to_register(Reg::CtrlReg4, val.ctrl_reg4())?;
+        self.write_reg(Reg::CtrlReg4, val.ctrl_reg4())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_drdy(&mut self, drdy: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg4_set_drdy(&mut self, drdy: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg4, &mut arr)?;
+        self.read_reg(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
         val.set_ctrl_reg4_drdy(drdy);
-        self.write_to_register(Reg::CtrlReg4, val.ctrl_reg4())?;
+        self.write_reg(Reg::CtrlReg4, val.ctrl_reg4())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_int_en(&mut self, int_en: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg4_set_int_en(&mut self, int_en: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg4, &mut arr)?;
+        self.read_reg(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
         val.set_ctrl_reg4_int_en(int_en);
-        self.write_to_register(Reg::CtrlReg4, val.ctrl_reg4())?;
+        self.write_reg(Reg::CtrlReg4, val.ctrl_reg4())?;
 
         Ok(())
     }
@@ -362,32 +347,32 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn ctrl_reg4_set_int_f_full(
         &mut self,
         int_f_fool: u8,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg4, &mut arr)?;
+        self.read_reg(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
         val.set_ctrl_reg4_int_f_full(int_f_fool);
-        self.write_to_register(Reg::CtrlReg4, val.ctrl_reg4())?;
+        self.write_reg(Reg::CtrlReg4, val.ctrl_reg4())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_int_f_wtm(&mut self, int_f_wtm: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg4_set_int_f_wtm(&mut self, int_f_wtm: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg4, &mut arr)?;
+        self.read_reg(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
         val.set_ctrl_reg4_int_f_wtm(int_f_wtm);
-        self.write_to_register(Reg::CtrlReg4, val.ctrl_reg4())?;
+        self.write_reg(Reg::CtrlReg4, val.ctrl_reg4())?;
 
         Ok(())
     }
 
-    pub(super) fn ctrl_reg4_set_int_f_ovr(&mut self, int_f_ovr: u8) -> Result<(), Error<B::Error>> {
+    pub(super) fn ctrl_reg4_set_int_f_ovr(&mut self, int_f_ovr: u8) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::CtrlReg4, &mut arr)?;
+        self.read_reg(Reg::CtrlReg4, &mut arr)?;
         let mut val = CtrlReg4(arr[0]);
         val.set_ctrl_reg4_int_f_ovr(int_f_ovr);
-        self.write_to_register(Reg::CtrlReg4, val.ctrl_reg4())?;
+        self.write_reg(Reg::CtrlReg4, val.ctrl_reg4())?;
 
         Ok(())
     }
@@ -395,19 +380,19 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn fifo_ctrl_set_trig_modes_f_mode(
         &mut self,
         trig_modes_f_mode: u8,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::FifoCtrl, &mut arr)?;
+        self.read_reg(Reg::FifoCtrl, &mut arr)?;
         let mut val = FifoCtrl(arr[0]);
         val.set_fifo_ctrl_trig_modes_f_mode(trig_modes_f_mode);
-        self.write_to_register(Reg::FifoCtrl, val.fifo_ctrl())?;
+        self.write_reg(Reg::FifoCtrl, val.fifo_ctrl())?;
 
         Ok(())
     }
 
-    pub(super) fn fifo_ctrl_get_trig_modes_f_mode(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn fifo_ctrl_get_trig_modes_f_mode(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::FifoCtrl, &mut arr)?;
+        self.read_reg(Reg::FifoCtrl, &mut arr)?;
         let val: u8 = FifoCtrl(arr[0]).fifo_ctrl_trig_modes_f_mode();
 
         Ok(val)
@@ -416,112 +401,112 @@ impl<B: super::BusOperation> super::Lps22df<B> {
     pub(super) fn fifo_ctrl_set_stop_on_wtm(
         &mut self,
         stop_on_wtm: u8,
-    ) -> Result<(), Error<B::Error>> {
+    ) -> Result<(), Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::FifoCtrl, &mut arr)?;
+        self.read_reg(Reg::FifoCtrl, &mut arr)?;
         let mut val = FifoCtrl(arr[0]);
         val.set_fifo_ctrl_stop_on_wtm(stop_on_wtm);
-        self.write_to_register(Reg::FifoCtrl, val.fifo_ctrl())?;
+        self.write_reg(Reg::FifoCtrl, val.fifo_ctrl())?;
 
         Ok(())
     }
 
-    pub(super) fn fifo_ctrl_get_stop_on_wtm(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn fifo_ctrl_get_stop_on_wtm(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::FifoCtrl, &mut arr)?;
+        self.read_reg(Reg::FifoCtrl, &mut arr)?;
         let val = FifoCtrl(arr[0]).fifo_ctrl_stop_on_wtm();
 
         Ok(val)
     }
 
-    pub(super) fn fifo_wtm_set(&mut self, wtm: u8) -> Result<(), Error<B::Error>> {
-        self.write_to_register(Reg::FifoWtm, wtm & 0x7F)?;
+    pub(super) fn fifo_wtm_set(&mut self, wtm: u8) -> Result<(), Error<I::Error>> {
+        self.write_reg(Reg::FifoWtm, wtm & 0x7F)?;
 
         Ok(())
     }
 
-    pub(super) fn int_source_get_boot_on(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn int_source_get_boot_on(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::IntSource, &mut arr)?;
+        self.read_reg(Reg::IntSource, &mut arr)?;
         let val = IntSource(arr[0]).int_source_boot_on();
 
         Ok(val)
     }
 
-    pub(super) fn int_source_get_pl_ph(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn int_source_get_pl_ph(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::IntSource, &mut arr)?;
+        self.read_reg(Reg::IntSource, &mut arr)?;
         let val = IntSource(arr[0]).int_source_pl_ph();
 
         Ok(val)
     }
 
-    pub(super) fn fifo_status1_get(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn fifo_status1_get(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::FifoStatus1, &mut arr)?;
+        self.read_reg(Reg::FifoStatus1, &mut arr)?;
 
         Ok(arr[0])
     }
 
-    pub(super) fn fifo_status2_get_fifo_wtm_ia(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn fifo_status2_get_fifo_wtm_ia(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::FifoStatus2, &mut arr)?;
+        self.read_reg(Reg::FifoStatus2, &mut arr)?;
         let val = FifoStatus2(arr[0]).fifo_status2_fifo_wtm_ia();
 
         Ok(val)
     }
 
-    pub(super) fn fifo_status2_get_fifo_ovr_ia(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn fifo_status2_get_fifo_ovr_ia(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::FifoStatus2, &mut arr)?;
+        self.read_reg(Reg::FifoStatus2, &mut arr)?;
         let val = FifoStatus2(arr[0]).fifo_status2_fifo_ovr_ia();
 
         Ok(val)
     }
 
-    pub(super) fn fifo_status2_get_fifo_full_ia(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn fifo_status2_get_fifo_full_ia(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::FifoStatus2, &mut arr)?;
+        self.read_reg(Reg::FifoStatus2, &mut arr)?;
         let val = FifoStatus2(arr[0]).fifo_status2_fifo_full_ia();
 
         Ok(val)
     }
 
-    pub(super) fn status_get_p_da(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn status_get_p_da(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Status, &mut arr)?;
+        self.read_reg(Reg::Status, &mut arr)?;
         let val = Status(arr[0]).status_p_da();
 
         Ok(val)
     }
 
-    pub(super) fn status_get_t_da(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn status_get_t_da(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Status, &mut arr)?;
+        self.read_reg(Reg::Status, &mut arr)?;
         let val = Status(arr[0]).status_t_da();
 
         Ok(val)
     }
 
-    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i16, Error<B::Error>> {
+    pub(super) fn temp_out_l_h_get(&mut self) -> Result<i16, Error<I::Error>> {
         let mut arr: [u8; 2] = [0; 2];
-        self.read_from_register(Reg::TempOutL, &mut arr)?;
+        self.read_reg(Reg::TempOutL, &mut arr)?;
         let raw_temp: i16 = arr[0] as i16 | (arr[1] as i8 as i16) << 8;
 
         Ok(raw_temp)
     }
 
-    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Error<B::Error>> {
+    pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Error<I::Error>> {
         let mut arr: [u8; 3] = [0; 3];
-        self.read_from_register(Reg::PressOutXl, &mut arr)?;
+        self.read_reg(Reg::PressOutXl, &mut arr)?;
         let raw_press: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i8 as i32) << 16;
 
         Ok(raw_press)
     }
 
-    pub(super) fn press_out_h_get(&mut self) -> Result<u8, Error<B::Error>> {
+    pub(super) fn press_out_h_get(&mut self) -> Result<u8, Error<I::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::PressOutH, &mut arr)?;
+        self.read_reg(Reg::PressOutH, &mut arr)?;
         let val: u8 = arr[0];
 
         Ok(val)
@@ -529,18 +514,18 @@ impl<B: super::BusOperation> super::Lps22df<B> {
 
     pub(super) fn press_out_xl_l_h_temp_out_l_h_get(
         &mut self,
-    ) -> Result<(i32, i16), Error<B::Error>> {
+    ) -> Result<(i32, i16), Error<I::Error>> {
         let mut arr: [u8; 5] = [0; 5];
-        self.read_from_register(Reg::PressOutXl, &mut arr)?;
+        self.read_reg(Reg::PressOutXl, &mut arr)?;
         let raw_press: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i8 as i32) << 16;
         let raw_temp: i16 = arr[3] as i16 | (arr[4] as i8 as i16) << 8;
 
         Ok((raw_press, raw_temp))
     }
 
-    pub(super) fn fifo_data_out_press_xl_l_h_get(&mut self) -> Result<i32, Error<B::Error>> {
+    pub(super) fn fifo_data_out_press_xl_l_h_get(&mut self) -> Result<i32, Error<I::Error>> {
         let mut arr: [u8; 3] = [0; 3];
-        self.read_from_register(Reg::FifoDataOutPressXl, &mut arr)?;
+        self.read_reg(Reg::FifoDataOutPressXl, &mut arr)?;
         let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i8 as i32) << 16;
 
         Ok(val)
@@ -598,7 +583,7 @@ bitfield! {
 }
 
 bitfield! {
-    pub struct CtrlReg1(u8);
+    struct CtrlReg1(u8);
     ctrl_reg1, _: 7, 0;
     not_used7, _: 7, 7;
     ctrl_reg1_odr, set_ctrl_reg1_odr: 6, 3;
@@ -606,7 +591,7 @@ bitfield! {
 }
 
 bitfield! {
-    pub struct CtrlReg2(u8);
+    struct CtrlReg2(u8);
     ctrl_reg2, _: 7, 0;
     ctrl_reg2_boot, set_ctrl_reg2_boot: 6, 6;
     ctrl_reg2_lfpf_cfg_en_lpfp, set_ctrl_reg2_lfpf_cfg_en_lpfp: 5, 4;
@@ -627,7 +612,7 @@ bitfield! {
 }
 
 bitfield! {
-    pub struct CtrlReg4(u8);
+    struct CtrlReg4(u8);
     ctrl_reg4, _: 7, 0;
     not_used7, _: 7, 7;
     ctrl_reg4_drdy_pls, set_ctrl_reg4_drdy_pls: 6, 6;
@@ -825,7 +810,7 @@ impl From<u8> for super::FifoMode {
         match value {
             0b000 => Self::Bypass,
             0b100 => Self::Bypass,
-            0b001 => Self::FIFOMode,
+            0b001 => Self::Fifo,
             0b010 => Self::Continuous,
             0b011 => Self::Continuous,
             0b101 => Self::BypassToFifo,

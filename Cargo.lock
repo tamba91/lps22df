@@ -15,9 +15,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
+name = "generic-bus"
+version = "0.1.0"
+source = "git+https://gitlab.di.unimi.it/andrea.tambani/generic-bus#b8188b3f08586c22affea063db3ec8bef01db8f9"
+
+[[package]]
 name = "lps22df"
 version = "0.1.0"
 dependencies = [
  "bitfield",
  "embedded-hal",
+ "generic-bus",
 ]
