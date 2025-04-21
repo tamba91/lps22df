@@ -269,6 +269,20 @@ impl<P: I2c> Lps22df<Lps22dfI2C<P>> {
 
         Ok(instance)
     }
+
+    /// Method that returns the interface stored in the driver.
+    /// This method can be called before the driver struct goes out of scope, in order to regain the interface.
+    ///
+    /// # Arguments
+    ///
+    /// * None
+    ///
+    /// # Returns
+    ///
+    /// * I
+    pub fn destroy(self) -> P {
+        self.interface.i2c
+    }
 }
 
 impl<P: SpiDevice> Lps22df<Lps22dfSPI<P>> {
@@ -297,6 +311,20 @@ impl<P: SpiDevice> Lps22df<Lps22dfSPI<P>> {
         instance.reset()?;
 
         Ok(instance)
+    }
+
+    /// Method that returns the interface stored in the driver.
+    /// This method can be called before the driver struct goes out of scope, in order to regain the interface.
+    ///
+    /// # Arguments
+    ///
+    /// * None
+    ///
+    /// # Returns
+    ///
+    /// * I
+    pub fn destroy(self) -> P {
+        self.interface.spi
     }
 }
 
