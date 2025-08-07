@@ -491,7 +491,7 @@ impl<I: BusOperation> super::Lps22df<I> {
     pub(super) fn temp_out_l_h_get(&mut self) -> Result<i16, Error<I::Error>> {
         let mut arr: [u8; 2] = [0; 2];
         self.read_reg(Reg::TempOutL, &mut arr)?;
-        let raw_temp: i16 = arr[0] as i16 | (arr[1] as i8 as i16) << 8;
+        let raw_temp: i16 = arr[0] as i16 | ((arr[1] as i8 as i16) << 8);
 
         Ok(raw_temp)
     }
@@ -499,7 +499,7 @@ impl<I: BusOperation> super::Lps22df<I> {
     pub(super) fn press_out_xl_l_h_get(&mut self) -> Result<i32, Error<I::Error>> {
         let mut arr: [u8; 3] = [0; 3];
         self.read_reg(Reg::PressOutXl, &mut arr)?;
-        let raw_press: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i8 as i32) << 16;
+        let raw_press: i32 = arr[0] as i32 | ((arr[1] as i32) << 8) | ((arr[2] as i8 as i32) << 16);
 
         Ok(raw_press)
     }
@@ -517,8 +517,8 @@ impl<I: BusOperation> super::Lps22df<I> {
     ) -> Result<(i32, i16), Error<I::Error>> {
         let mut arr: [u8; 5] = [0; 5];
         self.read_reg(Reg::PressOutXl, &mut arr)?;
-        let raw_press: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i8 as i32) << 16;
-        let raw_temp: i16 = arr[3] as i16 | (arr[4] as i8 as i16) << 8;
+        let raw_press: i32 = arr[0] as i32 | ((arr[1] as i32) << 8) | ((arr[2] as i8 as i32) << 16);
+        let raw_temp: i16 = arr[3] as i16 | ((arr[4] as i8 as i16) << 8);
 
         Ok((raw_press, raw_temp))
     }
@@ -526,7 +526,7 @@ impl<I: BusOperation> super::Lps22df<I> {
     pub(super) fn fifo_data_out_press_xl_l_h_get(&mut self) -> Result<i32, Error<I::Error>> {
         let mut arr: [u8; 3] = [0; 3];
         self.read_reg(Reg::FifoDataOutPressXl, &mut arr)?;
-        let val: i32 = arr[0] as i32 | (arr[1] as i32) << 8 | (arr[2] as i8 as i32) << 16;
+        let val: i32 = arr[0] as i32 | ((arr[1] as i32) << 8) | ((arr[2] as i8 as i32) << 16);
 
         Ok(val)
     }

@@ -641,9 +641,9 @@ impl<I: BusOperation> Lps22df<I> {
             self.ctrl_reg2_set_oneshot()?;
             while self.status_get_p_da()? == 0 {}
 
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::PowerDownOneShotModeNotEnabled);
+            Err(Error::PowerDownOneShotModeNotEnabled)
         }
     }
 
@@ -1154,9 +1154,9 @@ impl<I: BusOperation> Lps22df<I> {
     pub fn enable_fifo_full_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_full(true as u8)?;
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::BypassModeNotEnabled);
+            Err(Error::BypassModeNotEnabled)
         }
     }
 
@@ -1176,9 +1176,9 @@ impl<I: BusOperation> Lps22df<I> {
     pub fn disable_fifo_full_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_full(false as u8)?;
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::BypassModeNotEnabled);
+            Err(Error::BypassModeNotEnabled)
         }
     }
 
@@ -1198,9 +1198,9 @@ impl<I: BusOperation> Lps22df<I> {
     pub fn enable_fifo_watermark_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_wtm(true as u8)?;
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::BypassModeNotEnabled);
+            Err(Error::BypassModeNotEnabled)
         }
     }
 
@@ -1220,9 +1220,9 @@ impl<I: BusOperation> Lps22df<I> {
     pub fn disable_fifo_watermark_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_wtm(false as u8)?;
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::BypassModeNotEnabled);
+            Err(Error::BypassModeNotEnabled)
         }
     }
 
@@ -1242,9 +1242,9 @@ impl<I: BusOperation> Lps22df<I> {
     pub fn enable_fifo_overrun_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_ovr(true as u8)?;
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::BypassModeNotEnabled);
+            Err(Error::BypassModeNotEnabled)
         }
     }
 
@@ -1264,9 +1264,9 @@ impl<I: BusOperation> Lps22df<I> {
     pub fn disable_fifo_overrun_to_pin(&mut self) -> Result<(), Error<I::Error>> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.ctrl_reg4_set_int_f_ovr(false as u8)?;
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::BypassModeNotEnabled);
+            Err(Error::BypassModeNotEnabled)
         }
     }
 
@@ -1318,9 +1318,9 @@ impl<I: BusOperation> Lps22df<I> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             self.fifo_ctrl_set_trig_modes_f_mode(mode as u8)?;
 
-            return Ok(());
+            Ok(())
         } else {
-            return Err(Error::BypassModeNotEnabled);
+            Err(Error::BypassModeNotEnabled)
         }
     }
 
@@ -1376,30 +1376,30 @@ impl<I: BusOperation> Lps22df<I> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             match enable_size_fifo_to_watermark {
                 true => match watermark_level {
-                    0 => return Err(Error::InvalidWatermarkLevel),
+                    0 => Err(Error::InvalidWatermarkLevel),
                     1..=127 => {
                         self.fifo_ctrl_set_stop_on_wtm(true as u8)?;
                         self.fifo_wtm_set(watermark_level)?;
-                        return Ok(());
+                        Ok(())
                     }
-                    128.. => return Err(Error::InvalidWatermarkLevel),
+                    128.. => Err(Error::InvalidWatermarkLevel),
                 },
                 false => match watermark_level {
                     0 => {
                         self.fifo_ctrl_set_stop_on_wtm(false as u8)?;
                         self.fifo_wtm_set(0)?;
-                        return Ok(());
+                        Ok(())
                     }
                     1..=127 => {
                         self.fifo_ctrl_set_stop_on_wtm(false as u8)?;
                         self.fifo_wtm_set(watermark_level)?;
-                        return Ok(());
+                        Ok(())
                     }
-                    128.. => return Err(Error::InvalidWatermarkLevel),
+                    128.. => Err(Error::InvalidWatermarkLevel),
                 },
             }
         } else {
-            return Err(Error::BypassModeNotEnabled);
+            Err(Error::BypassModeNotEnabled)
         }
     }
 
@@ -1467,7 +1467,7 @@ impl<I: BusOperation> Lps22df<I> {
         if let FifoMode::Bypass = self.fifo_ctrl_get_trig_modes_f_mode()?.into() {
             return Err(Error::BypassModeEnabled);
         }
-        if let true = self.fifo_ctrl_get_stop_on_wtm()? != 0 {
+        if self.fifo_ctrl_get_stop_on_wtm()? != 0 {
             return Err(Error::WatermarkEnabled);
         }
         let res = self.fifo_status2_get_fifo_full_ia()?;
